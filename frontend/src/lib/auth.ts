@@ -2,7 +2,7 @@ import NextAuth, { type DefaultSession } from 'next-auth'
 import Resend from 'next-auth/providers/resend'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { redirect } from 'next/navigation'
-import type { Role } from '@/generated/prisma/client'
+import type { Role } from '@prisma/client'
 
 import { prisma } from '@/lib/db'
 
@@ -39,7 +39,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // console instead of trying to send email. Lets the team log in locally
       // without setting up Resend.
       async sendVerificationRequest({ identifier, url, provider }) {
+        // Fail closed at first-send-attempt: production must have a real key.
+        // (We can't throw at module load because `next build` sets NODE_ENV
+        // to production while collecting page data.)
         if (!hasResendKey) {
+          if (process.env.NODE_ENV === 'production') {
+            throw new Error(
+              'AUTH_RESEND_KEY is required in production. Set it in your hosting env.'
+            )
+          }
           console.log('\n──────────────────────────────────────────────')
           console.log('  Magic link (dev mode — no AUTH_RESEND_KEY set)')
           console.log(`  to: ${identifier}`)
@@ -73,9 +81,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, user }) {
       // Prisma adapter passes the DB user. Project role + schoolId onto the
       // session so server components and actions can read them synchronously.
+      // We trust the adapter to return a User row (it just selected it).
       session.user.id = user.id
-      session.user.role = (user as { role?: Role }).role ?? 'PA'
-      session.user.schoolId = (user as { schoolId?: string | null }).schoolId ?? null
+      session.user.role = user.role ?? 'PA'
+      session.user.schoolId = user.schoolId ?? null
       return session
     },
   },

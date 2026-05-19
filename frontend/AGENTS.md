@@ -1,25 +1,20 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
+# Workshop Scheduler — frontend agent notes
 
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
+Stack: **Next.js 15** (App Router) · **Prisma 6** · **Auth.js v5** (magic-link via Resend) · **Tailwind v4** · **TypeScript strict**.
 
-## Notable Next 16 gotchas already encountered
-
-- `middleware.ts` is renamed to **`proxy.ts`** in Next 16. Function is named `proxy` (default or named export). See `src/proxy.ts` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`.
-- `cookies()` from `next/headers` is **async** — `const cookieStore = await cookies()`.
-- `forbidden()` and `unauthorized()` helpers exist but are marked experimental — prefer `redirect('/403')` for now (see `src/lib/auth.ts`).
+Auth.js v5 ships from npm with a `-beta` tag but is the de-facto stable line — it's what every current tutorial assumes. We pin an exact beta version in `package.json` and only bump it deliberately.
 
 ## Project conventions (locked)
 
-- **Mutations go through Server Actions**, never API routes (unless explicitly external).
-- Validate every Server Action input with a Zod schema from `src/lib/schemas/`. No untyped `formData.get(...)` reaching the DB.
-- **Every Server Action and protected page calls `requireRole(...)` from `@/lib/auth` on its first line.** The proxy is an optimistic check only; never trust it for authorization.
+- **Mutations go through Server Actions**, never API routes (unless an *external* caller needs them).
+- Validate every Server Action input with a Zod schema from `src/lib/schemas/`. No untyped `formData.get(...)` reaching the DB. See `src/lib/schemas/auth.ts` + `src/app/login/page.tsx` for the canonical example.
+- **Every Server Action and protected page calls `requireRole(...)` from `@/lib/auth` on its first line.** This is the *only* authorization layer — there is no middleware/proxy guard. Don't skip it.
 - Never query the DB from client components. Server Components or Server Actions only.
-- No `any`. Use `unknown` and narrow.
+- No `any`. Use `unknown` and narrow. Lint rule enforces this.
 - Don't modify `prisma/schema.prisma` without running `npm run db:migrate -- --name <descriptive_name>`. Migrations are committed.
-- Soft delete (`deletedAt`) on `User` and `School`. Other models: your call when you add them — pick a policy and document it here.
+- Soft delete (`deletedAt`) on `User` and `School`. When you query, **always filter `where: { deletedAt: null }`** — there's no global filter. Add new models with hard delete unless you have a specific reason; document the policy here if you choose soft delete.
 - **`Teacher` is currently inlined as `User { schoolId? }`.** Reasoning: a separate table with one FK and no other fields is premature normalization. If it grows real fields (specialty, grades taught, hire date), extract to a `Teacher` table with `userId` FK — don't shoehorn teacher-only fields onto `User`.
+- **All workshop dates/times are stored as UTC, rendered in `America/Vancouver`.** Use `Intl.DateTimeFormat` with `timeZone: 'America/Vancouver'` for display. Never construct a `new Date('2026-05-19')` and expect local TZ — it parses as UTC midnight.
 
 ## File layout
 
@@ -27,20 +22,18 @@ This version has breaking changes — APIs, conventions, and file structure may 
 src/
   app/
     page.tsx                       # routes user to /admin /teacher /pa by role
-    login/page.tsx                 # magic-link form
+    login/page.tsx                 # magic-link form (Zod-validated)
     login/check-email/page.tsx
     403/page.tsx
     admin/page.tsx                 # role-gated stub
     teacher/page.tsx               # role-gated stub
     pa/page.tsx                    # role-gated stub
     api/auth/[...nextauth]/route.ts  # Auth.js handler
-  components/
-    role-shell.tsx                 # shared header + sign-out
   lib/
-    auth.ts                        # NextAuth() config + helpers
+    auth.ts                        # NextAuth() config + requireRole/getCurrentUser
     db.ts                          # PrismaClient singleton
-    schemas/                       # add Zod schemas here (one file per feature)
-  proxy.ts                         # session-cookie optimistic check; redirects to /login
+    schemas/
+      auth.ts                      # add one file per feature
 prisma/
   schema.prisma
   seed.ts
@@ -51,25 +44,46 @@ prisma/
 
 ```
 src/app/<role>/<feature>/
-  page.tsx        # 'use server' (default for RSC). First line: await requireRole(...)
-  actions.ts      # 'use server'. Each action: requireRole + Zod parse + Prisma + revalidatePath
+  page.tsx        # async Server Component. First line: await requireRole(...)
+  actions.ts      # 'use server' at top. Each action: requireRole + Zod parse + Prisma + revalidatePath
 src/lib/schemas/<feature>.ts  # Zod schemas, export inferred types
+```
+
+Example skeleton for `actions.ts`:
+
+```ts
+'use server'
+
+import { revalidatePath } from 'next/cache'
+import { requireRole } from '@/lib/auth'
+import { prisma } from '@/lib/db'
+import { mySchema } from '@/lib/schemas/my-feature'
+
+export async function createThing(formData: FormData) {
+  const user = await requireRole('ADMIN')
+  const parsed = mySchema.parse({ name: formData.get('name') })
+  await prisma.thing.create({ data: { ...parsed, createdById: user.id } })
+  revalidatePath('/admin/things')
+}
 ```
 
 ## Common pitfalls
 
 - **Don't use `useEffect` for data fetching.** Use Server Components.
-- **Resend `From` must be a verified-domain address in production.** Use `AUTH_RESEND_FROM` env, never hardcode.
+- **`cookies()` from `next/headers` is async in Next 15** — `const cookieStore = await cookies()`.
+- **Resend `From` must be a verified-domain address in production.** Use `AUTH_RESEND_FROM` env, never hardcode. `auth.ts` throws at boot if `NODE_ENV=production` and `AUTH_RESEND_KEY` is unset.
 - **Adapter session strategy is `database`.** If you switch to JWT, `requireRole` still works but `session.user.role` will need to come from a JWT callback rather than the DB user.
-- **Prisma client is a singleton** — import from `@/lib/db`, don't `new PrismaClient()` anywhere else.
+- **Prisma client is a singleton** — import `prisma` from `@/lib/db`, don't `new PrismaClient()` anywhere else (except `prisma/seed.ts`, which is a one-shot script).
+- **`@prisma/client` types update on `prisma generate`.** It runs via `postinstall`, but if you change `schema.prisma` and your editor still shows the old types, run `npm run db:migrate` (or `npx prisma generate`) and restart the TS server.
 
 ## What's done
 
 - Auth.js v5 magic-link via Resend (with dev console-log fallback)
-- Role-based proxy + `requireRole` helper
+- `requireRole` helper as the single source of authorization truth
 - `User`, `School`, and NextAuth adapter tables
 - Seed (1 admin, 2 schools, 2 teachers, 2 PAs)
-- Stub pages for each role
+- Stub landing pages for each role (`/admin`, `/teacher`, `/pa`) with sign-out
+- CI: ESLint + Prettier + `tsc --noEmit` + `next build` on every PR into `dev`
 
 ## What's deferred (your team designs these)
 
@@ -78,5 +92,6 @@ src/lib/schemas/<feature>.ts  # Zod schemas, export inferred types
 - Matching / assignment algorithm
 - All feature pages beyond the role stubs
 - UI library (shadcn / Radix / Headless — pick one)
-- Notifications
+- Notifications (email + in-app)
+- Rate limiting on the magic-link route (currently none — fine for a closed beta, fix before going public)
 - Tests (Vitest + Playwright — add when there's logic worth testing)

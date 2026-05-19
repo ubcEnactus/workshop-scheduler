@@ -22,7 +22,6 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000), enter `admin@workshopscheduler.local` on the login form, and the magic-link URL will print to your dev server's terminal (because `AUTH_RESEND_KEY` is unset). Click it to sign in.
 
 To test the other roles, sign out and use `teacher1@workshopscheduler.local` or `pa1@workshopscheduler.local`.
-```
 
 Use the **prod** Neon branch URL for the `production` scope and the **dev** Neon branch URL for `preview`. Run `npx vercel env add AUTH_TRUST_HOST production` and set it to `true`.
 
@@ -33,8 +32,9 @@ Hard-coded by the scaffold and documented in [`frontend/AGENTS.md`](frontend/AGE
 - All mutations go through **Server Actions**, validated with **Zod** schemas in `src/lib/schemas/`
 - Every Server Action and protected page calls `requireRole(...)` from `@/lib/auth` on its **first line**
 - DB access only from Server Components / Server Actions — never from client components
-- `prisma migrate dev --name <descriptive>` for any schema change; migrations are committed
+- `npm run db:migrate -- --name <descriptive>` for any schema change; migrations are committed
 - No `any` — use `unknown` and narrow
+- CI runs ESLint, Prettier, `tsc --noEmit`, and `next build` on every PR into `dev`
 
 ## Branching Strategy
 

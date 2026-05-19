@@ -32,3 +32,37 @@ jobs:
       - name: Run Prettier check
         working-directory: frontend
         run: npm run format:check
+
+  typecheck-and-build:
+    name: TypeScript & Build
+    runs-on: ubuntu-latest
+
+    # Placeholder env vars so `prisma generate` and `next build` can complete
+    # without a real DB. Nothing in the app runs queries at build time.
+    env:
+      DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+      DIRECT_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+      AUTH_SECRET: 'ci-placeholder-secret-not-used-for-anything-real'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: TypeScript typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Next.js build
+        working-directory: frontend
+        run: npm run build

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 
 import { getCurrentUser, signIn } from '@/lib/auth'
+import { loginSchema } from '@/lib/schemas/auth'
 
 type SearchParams = Promise<{ callbackUrl?: string; error?: string }>
 
@@ -12,8 +13,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
 
   async function sendMagicLink(formData: FormData) {
     'use server'
+    const parsed = loginSchema.safeParse({ email: formData.get('email') })
+    if (!parsed.success) {
+      redirect('/login?error=InvalidEmail')
+    }
     await signIn('resend', {
-      email: formData.get('email'),
+      email: parsed.data.email,
       redirectTo: callbackUrl ?? '/',
     })
   }

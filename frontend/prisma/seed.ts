@@ -13,19 +13,9 @@
  * Run: npm run db:seed
  */
 
-import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient, Role } from '@prisma/client'
 
-import { PrismaClient, Role } from '../src/generated/prisma/client'
-
-const connectionString = process.env.DATABASE_URL
-if (!connectionString) {
-  console.error('DATABASE_URL is not set. Aborting seed.')
-  process.exit(1)
-}
-
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString }),
-})
+const prisma = new PrismaClient()
 
 const SCHOOLS = [
   { name: 'Lord Byng Secondary', district: 'Vancouver' },
@@ -43,16 +33,20 @@ const TEACHERS = [
   { email: 'teacher2@workshopscheduler.local', name: 'Tara Nguyen' },
 ]
 
+function slugId(prefix: string, name: string): string {
+  return `${prefix}-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`
+}
+
 async function main() {
   console.log('Seeding…')
 
   const schools = await Promise.all(
     SCHOOLS.map((s) =>
       prisma.school.upsert({
-        where: { id: `seed-${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}` },
+        where: { id: slugId('seed', s.name) },
         update: { name: s.name, district: s.district },
         create: {
-          id: `seed-${s.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+          id: slugId('seed', s.name),
           name: s.name,
           district: s.district,
         },
@@ -106,9 +100,7 @@ async function main() {
     ...paUsers.map((u) => ({ role: 'PA', email: u.email, name: u.name })),
   ]
   console.table(rows)
-  console.log(
-    '\nNo AUTH_RESEND_KEY set? The magic-link URL will print to this terminal',
-  )
+  console.log('\nNo AUTH_RESEND_KEY set? The magic-link URL will print to this terminal')
   console.log('when you submit the login form. Click it to sign in.\n')
 }
 

@@ -3,5 +3,4 @@ out
 build
 node_modules
 public
-src/generated
 prisma/migrations

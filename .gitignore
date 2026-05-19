@@ -41,6 +41,4 @@ yarn-error.log*
 *.tsbuildinfo
 frontend/next-env.d.ts
 
-# prisma generated client (regenerated on postinstall)
-frontend/src/generated/
-frontend/prisma/generated/
+# prisma generated client lives inside node_modules — already ignored above
