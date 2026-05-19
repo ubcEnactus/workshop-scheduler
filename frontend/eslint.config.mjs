@@ -16,6 +16,13 @@ export default tseslint.config(
     },
   },
   {
-    ignores: [".next/**", "out/**", "build/**", "node_modules/**"],
+    ignores: [
+      ".next/**",
+      "out/**",
+      "build/**",
+      "node_modules/**",
+      "src/generated/**",
+      "prisma/migrations/**",
+    ],
   }
 )
