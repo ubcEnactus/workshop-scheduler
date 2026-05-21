@@ -1,65 +1,63 @@
+'use client'
 import Image from 'next/image'
+import { useState } from 'react'
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
+const TIME_SLOTS = [
+  '8:00 AM', '8:30 AM', '9:00 AM', '9:30 AM', '10:00 AM', '10:30 AM',
+  '11:00 AM', '11:30 AM', '12:00 PM', '12:30 PM', '1:00 PM', '1:30 PM',
+  '2:00 PM', '2:30 PM', '3:00 PM', '3:30 PM', '4:00 PM', '4:30 PM',
+  '5:00 PM', '5:30 PM'
+];
+
 
 export default function Home() {
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex w-full max-w-3xl flex-1 flex-col items-center justify-between bg-white px-16 py-32 sm:items-start dark:bg-black">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl leading-10 font-semibold tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{' '}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{' '}
-            or the{' '}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{' '}
-            center.
-          </p>
+    const [grid, setGrid] = useState<boolean[][]>(() =>
+        Array(5).fill(null).map(() => Array(20).fill(false))
+    );
+    const toggleSlot = (dayIndex: number, slotIndex: number) => {
+        setGrid((prevGrid) => {
+            const newGrid = prevGrid.map((dayRow) => [...dayRow]);
+            newGrid[dayIndex][slotIndex] = !newGrid[dayIndex][slotIndex];
+        return newGrid;
+    });
+    };
+    return (
+    <div className="flex flex-col items-center p-8 bg-zinc-50 dark:bg-zinc-900 min-h-screen text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-3xl font-bold mb-8">Weekly Availability Grid</h1>
+
+        <div className="bg-white dark:bg-zinc-800 p-6 rounded-2xl shadow-md overflow-x-auto w-full max-w-4xl">
+        <div className="grid grid-cols-6 gap-2 min-w-[600px] text-center font-semibold text-sm border-b pb-3 mb-3">
+            <div>Time</div>
+            {DAYS.map((day) => (
+            <div key={day}>{day}</div>
+            ))}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="bg-foreground text-background flex h-12 w-full items-center justify-center gap-2 rounded-full px-5 transition-colors hover:bg-[#383838] md:w-[158px] dark:hover:bg-[#ccc]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] md:w-[158px] dark:border-white/[.145] dark:hover:bg-[#1a1a1a]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <div className="space-y-1">
+            {TIME_SLOTS.map((time, slotIndex) => (
+            <div key={time} className="grid grid-cols-6 gap-2 items-center min-w-[600px]">
+                <div className="text-right pr-4 text-xs text-zinc-500 font-medium">{time}</div>
+                {DAYS.map((day, dayIndex) => {
+                const isAvailable = grid[dayIndex][slotIndex];
+
+                return (
+                    <button
+                    key={`${dayIndex}-${slotIndex}`}
+                    onClick={() => toggleSlot(dayIndex, slotIndex)}
+                    className={`h-8 rounded-lg border transition-colors ${
+                        isAvailable
+                        ? 'bg-emerald-500 border-emerald-600 text-white shadow-sm'
+                        : 'bg-zinc-50 hover:bg-zinc-100 border-zinc-200 dark:bg-zinc-700 dark:border-zinc-600'
+                    }`}
+                    title={`${day} at ${time}`}
+                    />
+                );
+                })}
+            </div>
+            ))}
         </div>
-      </main>
+        </div>
     </div>
-  )
+    );
 }
