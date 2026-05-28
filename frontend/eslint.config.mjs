@@ -1,21 +1,34 @@
-import js from "@eslint/js"
-import tseslint from "typescript-eslint"
-import prettierConfig from "eslint-config-prettier"
-import prettierPlugin from "eslint-plugin-prettier"
+import { dirname } from 'path'
+import { fileURLToPath } from 'url'
+import { FlatCompat } from '@eslint/eslintrc'
+import prettierConfig from 'eslint-config-prettier'
+import prettierPlugin from 'eslint-plugin-prettier'
 
-export default tseslint.config(
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+const compat = new FlatCompat({ baseDirectory: __dirname })
+
+export default [
+  ...compat.extends('next/core-web-vitals', 'next/typescript'),
   {
     plugins: {
       prettier: prettierPlugin,
     },
     rules: {
       ...prettierConfig.rules,
-      "prettier/prettier": "error",
+      'prettier/prettier': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
     },
   },
   {
-    ignores: [".next/**", "out/**", "build/**", "node_modules/**"],
-  }
-)
+    ignores: [
+      '.next/**',
+      'out/**',
+      'build/**',
+      'node_modules/**',
+      'src/generated/**',
+      'prisma/migrations/**',
+    ],
+  },
+]

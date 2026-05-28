@@ -1,0 +1,107 @@
+// Workshop Scheduler — schema
+//
+// Intentionally minimal. Two domain entities (User, School) plus NextAuth
+// adapter tables. Everything else (Cycle, Workshop, Slot, Availability,
+// Assignment, Notification) is your team's call. See AGENTS.md.
+//
+// Conventions:
+// - cuid() ids
+// - soft delete via `deletedAt` on User and School
+// - Teacher is inlined as `User.schoolId?` (extract to a Teacher table later
+//   if it grows real fields; see AGENTS.md)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  PA
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role      @default(PA)
+
+  // Populated when role = TEACHER. App logic enforces.
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+
+  accounts Account[]
+  sessions Session[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([role])
+  @@index([schoolId])
+  @@index([deletedAt])
+}
+
+model School {
+  id       String @id @default(cuid())
+  name     String
+  district String
+
+  teachers User[]
+
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([deletedAt])
+}
+
+// --- NextAuth adapter tables ---
+// Required by @auth/prisma-adapter. Do not modify field names.
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
