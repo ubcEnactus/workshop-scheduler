@@ -1,0 +1,45 @@
+name: Deploy Migrations
+
+# Applies committed Prisma migrations to the shared Neon `main` database on every
+# merge to git `main`. Uses `prisma migrate deploy`, which only APPLIES already-
+# committed migrations — it never creates or resets. No manual step required.
+#
+# Requires repository secrets pointing at the shared Neon `main` branch:
+#   - DATABASE_URL  (pooled connection string)
+#   - DIRECT_URL    (direct/non-pooled connection string; used by migrations)
+
+on:
+  push:
+    branches:
+      - main
+
+# Serialize deploys so two merges can't run migrations against the same DB at once.
+concurrency:
+  group: migrate-deploy-main
+  cancel-in-progress: false
+
+jobs:
+  migrate-deploy:
+    name: prisma migrate deploy
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy

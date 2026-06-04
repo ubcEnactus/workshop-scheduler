@@ -2,19 +2,21 @@
 
 Stack: **Next.js 15** (App Router) · **Prisma 6** · **Auth.js v5** (magic-link via Resend) · **Tailwind v4** · **TypeScript strict**.
 
-Auth.js v5 ships from npm with a `-beta` tag but is the de-facto stable line — it's what every current tutorial assumes. We pin an exact beta version in `package.json` and only bump it deliberately.
+> Auth.js v5 ships under a `-beta` npm tag but is the de-facto stable line. We pin an exact beta in `package.json`; bump it only deliberately.
 
 ## Project conventions (locked)
 
 - **Mutations go through Server Actions**, never API routes (unless an *external* caller needs them).
-- Validate every Server Action input with a Zod schema from `src/lib/schemas/`. No untyped `formData.get(...)` reaching the DB. See `src/lib/schemas/auth.ts` + `src/app/login/page.tsx` for the canonical example.
-- **Every Server Action and protected page calls `requireRole(...)` from `@/lib/auth` on its first line.** This is the *only* authorization layer — there is no middleware/proxy guard. Don't skip it.
-- Never query the DB from client components. Server Components or Server Actions only.
-- No `any`. Use `unknown` and narrow. Lint rule enforces this.
-- Don't modify `prisma/schema.prisma` without running `npm run db:migrate -- --name <descriptive_name>`. Migrations are committed.
-- Soft delete (`deletedAt`) on `User` and `School`. When you query, **always filter `where: { deletedAt: null }`** — there's no global filter. Add new models with hard delete unless you have a specific reason; document the policy here if you choose soft delete.
-- **`Teacher` is currently inlined as `User { schoolId? }`.** Reasoning: a separate table with one FK and no other fields is premature normalization. If it grows real fields (specialty, grades taught, hire date), extract to a `Teacher` table with `userId` FK — don't shoehorn teacher-only fields onto `User`.
-- **All workshop dates/times are stored as UTC, rendered in `America/Vancouver`.** Use `Intl.DateTimeFormat` with `timeZone: 'America/Vancouver'` for display. Never construct a `new Date('2026-05-19')` and expect local TZ — it parses as UTC midnight.
+- **Validate every Server Action input with a Zod schema from `src/lib/schemas/`.** No untyped `formData.get(...)` reaching the DB. Canonical example: `src/lib/schemas/auth.ts` + `src/app/login/page.tsx`.
+- **`requireRole(...)` from `@/lib/auth` is the first line of every Server Action and protected page.** It's the *only* authorization layer — there's no middleware guard. Don't skip it.
+- **Never query the DB from client components** — Server Components or Server Actions only.
+- **No `any`.** Use `unknown` and narrow (lint-enforced).
+- **Schema changes go through `npm run db:migrate -- --name <descriptive_name>`**, and the migration is committed.
+- **Soft delete (`deletedAt`) on `User` and `School` only** — always filter `where: { deletedAt: null }` (there's no global filter). New models hard-delete unless you document a reason here.
+- **Scheduling models hard-delete.** `Cycle`, `ClassSection`, `ClassMeeting`, `Workshop`, `Assignment` track lifecycle via status enums (`CycleStatus`, `WorkshopStatus`, `AssignmentStatus`), not `deletedAt`. A `Workshop` exists because a class requested a session that cycle; the scheduler fills in `scheduledStart/End` + `Assignment`s.
+- **`Teacher` is inlined as `User { schoolId? }`** — don't add a table for one FK. If teacher-only fields appear (specialty, grades taught, hire date), extract a `Teacher { userId }` table rather than bloating `User`.
+- **Times are stored UTC, rendered in `America/Vancouver`** via `Intl.DateTimeFormat` with `timeZone: 'America/Vancouver'`. Don't `new Date('2026-05-19')` expecting local TZ — it parses as UTC midnight.
+- **Recurring weekly slots are NOT instants.** `ClassMeeting` (and any availability model) store `dayOfWeek` (1=Mon…5=Fri) + `startMinute`/`endMinute` as **local** wall-clock minutes from midnight. They become a UTC instant only when combined with a concrete `Cycle` date. Never store one as a `DateTime`.
 
 ## File layout
 
@@ -25,22 +27,19 @@ src/
     login/page.tsx                 # magic-link form (Zod-validated)
     login/check-email/page.tsx
     403/page.tsx
-    admin/page.tsx                 # role-gated stub
-    teacher/page.tsx               # role-gated stub
-    pa/page.tsx                    # role-gated stub
+    admin|teacher|pa/page.tsx      # role-gated stubs
     api/auth/[...nextauth]/route.ts  # Auth.js handler
   lib/
     auth.ts                        # NextAuth() config + requireRole/getCurrentUser
     db.ts                          # PrismaClient singleton
-    schemas/
-      auth.ts                      # add one file per feature
+    schemas/auth.ts                # one schema file per feature
 prisma/
   schema.prisma
   seed.ts
   migrations/                      # commit these
 ```
 
-## Adding a new feature (suggested pattern)
+## Adding a new feature
 
 ```
 src/app/<role>/<feature>/
@@ -48,8 +47,6 @@ src/app/<role>/<feature>/
   actions.ts      # 'use server' at top. Each action: requireRole + Zod parse + Prisma + revalidatePath
 src/lib/schemas/<feature>.ts  # Zod schemas, export inferred types
 ```
-
-Example skeleton for `actions.ts`:
 
 ```ts
 'use server'
@@ -69,29 +66,15 @@ export async function createThing(formData: FormData) {
 
 ## Common pitfalls
 
-- **Don't use `useEffect` for data fetching.** Use Server Components.
+- **Don't fetch data in `useEffect`.** Use Server Components.
 - **`cookies()` from `next/headers` is async in Next 15** — `const cookieStore = await cookies()`.
-- **Resend `From` must be a verified-domain address in production.** Use `AUTH_RESEND_FROM` env, never hardcode. `auth.ts` throws at boot if `NODE_ENV=production` and `AUTH_RESEND_KEY` is unset.
-- **Adapter session strategy is `database`.** If you switch to JWT, `requireRole` still works but `session.user.role` will need to come from a JWT callback rather than the DB user.
-- **Prisma client is a singleton** — import `prisma` from `@/lib/db`, don't `new PrismaClient()` anywhere else (except `prisma/seed.ts`, which is a one-shot script).
-- **`@prisma/client` types update on `prisma generate`.** It runs via `postinstall`, but if you change `schema.prisma` and your editor still shows the old types, run `npm run db:migrate` (or `npx prisma generate`) and restart the TS server.
+- **Prisma client is a singleton** — import `prisma` from `@/lib/db`; never `new PrismaClient()` elsewhere (except `prisma/seed.ts`, a one-shot script).
+- **`@prisma/client` types regenerate on `prisma generate`** (runs via `postinstall`). If your editor shows stale types after a schema change, run `npm run db:migrate` and restart the TS server.
+- **Resend `From` must be a verified-domain address in production.** Use the `AUTH_RESEND_FROM` env, never hardcode. `auth.ts` throws at boot if `NODE_ENV=production` and `AUTH_RESEND_KEY` is unset.
+- **Session strategy is `database`.** Switching to JWT keeps `requireRole` working, but `session.user.role` would then need to come from a JWT callback instead of the DB user.
+- **The magic-link route has no rate limiting** — fine for the closed beta, add before going public.
 
-## What's done
+## Not built yet — don't assume these exist
 
-- Auth.js v5 magic-link via Resend (with dev console-log fallback)
-- `requireRole` helper as the single source of authorization truth
-- `User`, `School`, and NextAuth adapter tables
-- Seed (1 admin, 2 schools, 2 teachers, 2 PAs)
-- Stub landing pages for each role (`/admin`, `/teacher`, `/pa`) with sign-out
-- CI: ESLint + Prettier + `tsc --noEmit` + `next build` on every PR into `dev`
-
-## What's deferred (your team designs these)
-
-- Availability submission (slot-tick vs free-form windows — undecided)
-- Workshop / Cycle / Slot models
-- Matching / assignment algorithm
-- All feature pages beyond the role stubs
-- UI library (shadcn / Radix / Headless — pick one)
-- Notifications (email + in-app)
-- Rate limiting on the magic-link route (currently none — fine for a closed beta, fix before going public)
-- Tests (Vitest + Playwright — add when there's logic worth testing)
+- **Availability model** is intentionally NOT in `schema.prisma` (slot-tick vs free-form windows undecided). **Owned by ENCT-027** — coordinate with that branch before adding it.
+- **Matching / assignment algorithm**: reads `ClassMeeting` times + availability, writes `Workshop.scheduledStart/End` + `Assignment`s. Commute distance is a later extension via lat/lng on `School`.
