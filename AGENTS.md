@@ -1,4 +1,4 @@
-# Workshop Scheduler — frontend agent notes
+# Workshop Scheduler — agent notes
 
 Stack: **Next.js 15** (App Router) · **Prisma 6** · **Auth.js v5** (magic-link via Resend) · **Tailwind v4** · **TypeScript strict**.
 
