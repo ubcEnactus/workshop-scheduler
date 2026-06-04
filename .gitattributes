@@ -1,0 +1,21 @@
+# Normalize line endings so the repo compiles identically on macOS, Linux, and
+# Windows. Without this, Windows checkouts (core.autocrlf=true) get CRLF, which
+# trips Prettier/ESLint (`Delete ␍`) and breaks `npm run build` / `lint`.
+#
+# `text=auto eol=lf`: Git stores all text files as LF and checks them out as LF
+# on every platform, regardless of the user's core.autocrlf setting.
+
+* text=auto eol=lf
+
+# Binary files — never normalize or alter.
+*.ico  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
+*.eot  binary
+*.pdf  binary
