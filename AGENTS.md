@@ -16,7 +16,7 @@ Stack: **Next.js 15** (App Router) · **Prisma 6** · **Auth.js v5** (magic-link
 - **Scheduling models hard-delete.** `Cycle`, `ClassSection`, `ClassMeeting`, `Workshop`, `Assignment` track lifecycle via status enums (`CycleStatus`, `WorkshopStatus`, `AssignmentStatus`), not `deletedAt`. A `Workshop` exists because a class requested a session that cycle; the scheduler fills in `scheduledStart/End` + `Assignment`s.
 - **`Teacher` is inlined as `User { schoolId? }`** — don't add a table for one FK. If teacher-only fields appear (specialty, grades taught, hire date), extract a `Teacher { userId }` table rather than bloating `User`.
 - **Times are stored UTC, rendered in `America/Vancouver`** via `Intl.DateTimeFormat` with `timeZone: 'America/Vancouver'`. Don't `new Date('2026-05-19')` expecting local TZ — it parses as UTC midnight.
-- **Recurring weekly slots are NOT instants.** `ClassMeeting` (and any availability model) store `dayOfWeek` (1=Mon…5=Fri) + `startMinute`/`endMinute` as **local** wall-clock minutes from midnight. They become a UTC instant only when combined with a concrete `Cycle` date. Never store one as a `DateTime`.
+- **Recurring weekly slots are NOT instants.** `ClassMeeting` and `Availability` store `dayOfWeek` (0=Mon…4=Fri, no weekends) + minute-of-day offsets as **local** wall-clock minutes from midnight. They become a UTC instant only when combined with a concrete `Cycle` date. Never store one as a `DateTime`.
 
 ## File layout
 
