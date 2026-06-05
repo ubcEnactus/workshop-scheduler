@@ -1,10 +1,4 @@
-import {
-  seedAvailabilities,
-  seedClassMeetings,
-  seedCycle,
-  seedPAs,
-  seedWorkshops,
-} from '../seed'
+import { seedAvailabilities, seedClassMeetings, seedCycle, seedPAs, seedWorkshops } from '../seed'
 import type { Assignment, Availability, ClassMeeting, Cycle, PA, Workshop } from '../types'
 
 let cycle: Cycle = { ...seedCycle }

@@ -8,7 +8,11 @@ function toUtcDay(dayOfWeek: number): number {
  * Returns all ISO date strings (YYYY-MM-DD) within [startDate, endDate]
  * that fall on the given dayOfWeek (0=Mon...4=Fri).
  */
-export function getDatesForDayOfWeek(dayOfWeek: number, startDate: string, endDate: string): string[] {
+export function getDatesForDayOfWeek(
+  dayOfWeek: number,
+  startDate: string,
+  endDate: string
+): string[] {
   const target = toUtcDay(dayOfWeek)
   const dates: string[] = []
   const end = new Date(endDate + 'T00:00:00Z')

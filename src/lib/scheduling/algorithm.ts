@@ -19,7 +19,8 @@ function findAvailablePAs(
   const ids = availabilities
     .filter(
       (av) =>
-        av.dayOfWeek === dayOfWeek && availabilityCovers(startTime, endTime, av.startTime, av.endTime)
+        av.dayOfWeek === dayOfWeek &&
+        availabilityCovers(startTime, endTime, av.startTime, av.endTime)
     )
     .map((av) => av.paId)
   return [...new Set(ids)]

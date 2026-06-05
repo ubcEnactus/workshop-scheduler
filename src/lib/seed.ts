@@ -38,9 +38,33 @@ export const seedAvailabilities: Availability[] = [
 
 export const seedWorkshops: Workshop[] = [
   // Mon: Alice + Bob available → satisfies minPAs=1, maxPAs=2
-  { id: 'ws-1', title: 'Intro to Python', cycleId: 'cycle-1', classMeetingId: 'cm-1', minPAs: 1, maxPAs: 2, status: 'UNSCHEDULED' },
+  {
+    id: 'ws-1',
+    title: 'Intro to Python',
+    cycleId: 'cycle-1',
+    classMeetingId: 'cm-1',
+    minPAs: 1,
+    maxPAs: 2,
+    status: 'UNSCHEDULED',
+  },
   // Wed: Alice + Carol available → satisfies minPAs=1, maxPAs=3
-  { id: 'ws-2', title: 'Data Structures', cycleId: 'cycle-1', classMeetingId: 'cm-2', minPAs: 1, maxPAs: 3, status: 'UNSCHEDULED' },
+  {
+    id: 'ws-2',
+    title: 'Data Structures',
+    cycleId: 'cycle-1',
+    classMeetingId: 'cm-2',
+    minPAs: 1,
+    maxPAs: 3,
+    status: 'UNSCHEDULED',
+  },
   // Fri: Bob + Carol available (2 PAs) but minPAs=3 → UNDER_SUPPLIED
-  { id: 'ws-3', title: 'Web Basics', cycleId: 'cycle-1', classMeetingId: 'cm-3', minPAs: 3, maxPAs: 4, status: 'UNSCHEDULED' },
+  {
+    id: 'ws-3',
+    title: 'Web Basics',
+    cycleId: 'cycle-1',
+    classMeetingId: 'cm-3',
+    minPAs: 3,
+    maxPAs: 4,
+    status: 'UNSCHEDULED',
+  },
 ]
