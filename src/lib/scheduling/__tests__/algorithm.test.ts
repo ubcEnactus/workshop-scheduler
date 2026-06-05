@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { confirmSchedule, runSchedule } from '../algorithm'
-import { getStore, resetStore } from '../store'
+import { getStore, resetStore, updateWorkshops } from '../store'
 
 beforeEach(() => {
   resetStore()
@@ -81,6 +81,36 @@ describe('idempotency', () => {
     const ws1Assignments = assignments.filter((a) => a.workshopId === 'ws-1')
     // Should still only have 2 assignments (Alice + Bob), not 4
     expect(ws1Assignments.length).toBe(2)
+  })
+})
+
+describe('PA conflict avoidance', () => {
+  it('does not double-book a PA across two workshops in the same time slot', () => {
+    // Point ws-2 at the same class meeting as ws-1 (both Mon 09:00–10:00)
+    // Alice and Bob are available Mon — they should be split, not shared
+    const { workshops } = getStore()
+    updateWorkshops(
+      workshops.map((ws) => (ws.id === 'ws-2' ? { ...ws, classMeetingId: 'cm-1' } : ws))
+    )
+
+    const { assignments } = runSchedule()
+
+    const monAssignments = assignments.filter((a) => {
+      const ws = getStore().workshops.find((w) => w.id === a.workshopId)
+      return ws?.scheduledStart?.startsWith('2026-06-08')
+    })
+
+    // Count how many workshops each PA is assigned to on Mon
+    const paWorkshopCount = new Map<string, Set<string>>()
+    for (const a of monAssignments) {
+      if (!paWorkshopCount.has(a.paId)) paWorkshopCount.set(a.paId, new Set())
+      paWorkshopCount.get(a.paId)!.add(a.workshopId)
+    }
+
+    // No PA should appear in more than one workshop at the same slot
+    for (const [, workshopIds] of paWorkshopCount) {
+      expect(workshopIds.size).toBe(1)
+    }
   })
 })
 

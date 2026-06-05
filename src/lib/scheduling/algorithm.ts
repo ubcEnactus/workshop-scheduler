@@ -7,9 +7,6 @@ export interface ScheduleResult {
   assignments: Assignment[]
 }
 
-/**
- * Resolves available PA IDs for a given meeting slot (dayOfWeek + time window).
- */
 function findAvailablePAs(
   dayOfWeek: number,
   startTime: string,
@@ -31,53 +28,96 @@ function findAvailablePAs(
  *
  * Idempotent: clears PROPOSED workshops/assignments and re-derives them on
  * every call. CONFIRMED workshops are left untouched.
+ *
+ * PA conflict-safe: tracks which PAs are already booked per concrete time slot
+ * so the same PA is never double-assigned across concurrent workshops.
  */
 export function runSchedule(): ScheduleResult {
   const { cycle, classMeetings, availabilities, workshops, assignments } = getStore()
 
-  // Keep only confirmed assignments; re-derive everything else
   const keptAssignments = assignments.filter((a) => a.status === 'CONFIRMED')
   const newAssignments: Assignment[] = [...keptAssignments]
 
-  const newWorkshops: Workshop[] = workshops.map((ws) => {
-    if (ws.status === 'CONFIRMED') return ws
+  // Track booked PAs per concrete slot "YYYY-MM-DD:HH:MM"
+  const bookedPerSlot = new Map<string, Set<string>>()
+
+  for (const a of keptAssignments) {
+    const ws = workshops.find((w) => w.id === a.workshopId)
+    if (ws?.scheduledStart) {
+      const key = `${ws.scheduledStart.slice(0, 10)}:${ws.scheduledStart.slice(11, 16)}`
+      if (!bookedPerSlot.has(key)) bookedPerSlot.set(key, new Set())
+      bookedPerSlot.get(key)!.add(a.paId)
+    }
+  }
+
+  const newWorkshops: Workshop[] = []
+
+  for (const ws of workshops) {
+    if (ws.status === 'CONFIRMED') {
+      newWorkshops.push(ws)
+      continue
+    }
 
     const meeting = classMeetings.find((cm) => cm.id === ws.classMeetingId)
-    if (!meeting) return { ...ws, status: 'UNDER_SUPPLIED' as const }
+    if (!meeting) {
+      newWorkshops.push({
+        ...ws,
+        status: 'UNDER_SUPPLIED',
+        scheduledStart: undefined,
+        scheduledEnd: undefined,
+      })
+      continue
+    }
 
     const dates = getDatesForDayOfWeek(meeting.dayOfWeek, cycle.startDate, cycle.endDate)
-    if (dates.length === 0) return { ...ws, status: 'UNDER_SUPPLIED' as const }
+    if (dates.length === 0) {
+      newWorkshops.push({
+        ...ws,
+        status: 'UNDER_SUPPLIED',
+        scheduledStart: undefined,
+        scheduledEnd: undefined,
+      })
+      continue
+    }
+
+    const date = dates[0]
+    const slotKey = `${date}:${meeting.startTime}`
+    const alreadyBooked = bookedPerSlot.get(slotKey) ?? new Set<string>()
 
     const availablePAIds = findAvailablePAs(
       meeting.dayOfWeek,
       meeting.startTime,
       meeting.endTime,
       availabilities
-    )
+    ).filter((paId) => !alreadyBooked.has(paId))
 
     if (availablePAIds.length < ws.minPAs) {
-      return { ...ws, status: 'UNDER_SUPPLIED' as const }
+      newWorkshops.push({
+        ...ws,
+        status: 'UNDER_SUPPLIED',
+        scheduledStart: undefined,
+        scheduledEnd: undefined,
+      })
+      continue
     }
 
     const assignedPAIds = availablePAIds.slice(0, ws.maxPAs)
-    const date = dates[0]
 
+    if (!bookedPerSlot.has(slotKey)) bookedPerSlot.set(slotKey, new Set())
     for (const paId of assignedPAIds) {
-      newAssignments.push({
-        id: nextId(),
-        workshopId: ws.id,
-        paId,
-        status: 'PROPOSED',
-      })
+      bookedPerSlot.get(slotKey)!.add(paId)
+      newAssignments.push({ id: nextId(), workshopId: ws.id, paId, status: 'PROPOSED' })
     }
 
-    return {
+    // No Z suffix — times are stored as wall-clock (local) so the browser
+    // displays them correctly without timezone conversion
+    newWorkshops.push({
       ...ws,
-      status: 'PROPOSED' as const,
+      status: 'PROPOSED',
       scheduledStart: `${date}T${meeting.startTime}:00`,
       scheduledEnd: `${date}T${meeting.endTime}:00`,
-    }
-  })
+    })
+  }
 
   updateWorkshops(newWorkshops)
   updateAssignments(newAssignments)
@@ -85,9 +125,6 @@ export function runSchedule(): ScheduleResult {
   return { workshops: newWorkshops, assignments: newAssignments }
 }
 
-/**
- * Promotes all PROPOSED workshops and assignments to CONFIRMED.
- */
 export function confirmSchedule(): ScheduleResult {
   const { workshops, assignments } = getStore()
 
