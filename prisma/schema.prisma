@@ -1,14 +1,20 @@
 // Workshop Scheduler — schema
 //
-// Intentionally minimal. Two domain entities (User, School) plus NextAuth
-// adapter tables. Everything else (Cycle, Workshop, Slot, Availability,
-// Assignment, Notification) is your team's call. See AGENTS.md.
+// Identity (User, School) + NextAuth adapter tables, plus the scheduling
+// domain: Cycle, ClassSection, ClassMeeting, Workshop, Assignment.
+// (PA availability is a separate model owned by ENCT-027 — not defined here.)
 //
 // Conventions:
 // - cuid() ids
-// - soft delete via `deletedAt` on User and School
+// - soft delete via `deletedAt` on User and School; HARD delete on the
+//   scheduling models (use status enums for lifecycle, not deletedAt)
 // - Teacher is inlined as `User.schoolId?` (extract to a Teacher table later
-//   if it grows real fields; see AGENTS.md)
+//   if it grows real fields; see AGENTS.md). Class-specific fields live on
+//   ClassSection, not User.
+// - Concrete instants (Workshop.scheduledStart/End) are stored UTC.
+//   Recurring weekly slots (ClassMeeting) are NOT instants: they store
+//   `dayOfWeek` + `startMinute`/`endMinute` as LOCAL wall-clock
+//   (America/Vancouver), combined with a cycle date to produce a UTC instant.
 
 generator client {
   provider = "prisma-client-js"
@@ -42,6 +48,12 @@ model User {
   sessions        Session[]
   availabilities  Availability[]
 
+  // Scheduling domain (back-relations)
+  classesTaught ClassSection[] @relation("TeacherClasses") // role = TEACHER
+  assignments   Assignment[]   @relation("PaAssignments") // role = PA
+  // NOTE: PA availability is owned by a separate workstream (ENCT-027). Add the
+  // back-relation here once that model lands.
+
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -56,7 +68,8 @@ model School {
   name     String
   district String
 
-  teachers User[]
+  teachers      User[]
+  classSections ClassSection[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -80,6 +93,124 @@ model Availability {
 
   @@unique([userId, dayOfWeek, startMin])
   @@index([dayOfWeek, startMin])
+// --- Scheduling domain ---
+// Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
+
+enum CycleStatus {
+  DRAFT
+  OPEN
+  SCHEDULED
+  CLOSED
+}
+
+// A scheduling period (e.g. "Spring 2026"). Scopes availability + workshops
+// and bounds the recurring weekly slots.
+model Cycle {
+  id        String      @id @default(cuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    CycleStatus @default(DRAFT)
+
+  workshops Workshop[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+// A teacher's class (one of the "1-3 classes" per school). Owns the meeting
+// times and ties teacher + school together.
+model ClassSection {
+  id      String  @id @default(cuid())
+  name    String // "Period 3 Biology"
+  subject String?
+  grade   String?
+
+  teacherId String
+  teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
+  schoolId  String
+  school    School @relation(fields: [schoolId], references: [id])
+
+  meetings  ClassMeeting[]
+  workshops Workshop[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teacherId])
+  @@index([schoolId])
+}
+
+// A weekly time the class meets. Teacher-side constraint: a workshop must land
+// in one of these slots. Local wall-clock (see header).
+model ClassMeeting {
+  id             String       @id @default(cuid())
+  classSectionId String
+  classSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+
+  dayOfWeek   Int // 0=Mon … 4=Fri (matches Availability; no weekends)
+  startMinute Int // minutes from local midnight
+  endMinute   Int
+
+  @@index([classSectionId])
+}
+
+// NOTE: PA availability lives in a separate model owned by ENCT-027 and is
+// intentionally not defined here. Don't add it without coordinating designs.
+
+enum WorkshopStatus {
+  UNSCHEDULED
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+// The deliverable. Existence = a class requested a session this cycle. The
+// scheduler fills in scheduledStart/End (a ClassMeeting time) + Assignments.
+model Workshop {
+  id             String       @id @default(cuid())
+  cycleId        String
+  cycle          Cycle        @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  classSectionId String
+  classSection   ClassSection @relation(fields: [classSectionId], references: [id])
+
+  scheduledStart DateTime? // UTC; null until scheduled
+  scheduledEnd   DateTime?
+  minPAs         Int            @default(1)
+  maxPAs         Int            @default(3)
+  status         WorkshopStatus @default(UNSCHEDULED)
+
+  assignments Assignment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cycleId])
+  @@index([classSectionId])
+  @@index([status])
+}
+
+enum AssignmentStatus {
+  PROPOSED
+  CONFIRMED
+  DECLINED
+}
+
+// A PA assigned to a workshop.
+model Assignment {
+  id         String           @id @default(cuid())
+  workshopId String
+  workshop   Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  paId       String
+  pa         User             @relation("PaAssignments", fields: [paId], references: [id])
+  status     AssignmentStatus @default(PROPOSED)
+  assignedAt DateTime         @default(now())
+
+  @@unique([workshopId, paId])
+  @@index([paId])
 }
 
 // --- NextAuth adapter tables ---

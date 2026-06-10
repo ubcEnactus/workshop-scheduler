@@ -93,6 +93,68 @@ async function main() {
     ),
   )
 
+  // --- Scheduling domain ---
+  // One cycle, one class per teacher (with a weekly meeting time), and an
+  // unscheduled workshop per class — the realistic starting state the matching
+  // algorithm fills in. No availability here (owned by ENCT-027).
+
+  const cycle = await prisma.cycle.upsert({
+    where: { id: 'seed-cycle-spring-2026' },
+    update: {},
+    create: {
+      id: 'seed-cycle-spring-2026',
+      name: 'Spring 2026',
+      // Stored UTC; the cycle bounds the recurring weekly meeting slots.
+      startDate: new Date('2026-01-05T00:00:00Z'),
+      endDate: new Date('2026-04-03T00:00:00Z'),
+      status: 'OPEN',
+    },
+  })
+
+  // dayOfWeek 0=Mon…4=Fri; start/endMinute are LOCAL wall-clock minutes.
+  const CLASSES = [
+    { name: 'Block A Biology 11', subject: 'Biology', grade: '11', dayOfWeek: 1, startMinute: 600, endMinute: 660 }, // Tue 10:00–11:00
+    { name: 'Block C Math 10', subject: 'Math', grade: '10', dayOfWeek: 2, startMinute: 780, endMinute: 870 }, // Wed 13:00–14:30
+  ]
+
+  for (let i = 0; i < teacherUsers.length; i++) {
+    const teacher = teacherUsers[i]
+    const def = CLASSES[i % CLASSES.length]
+    const classId = slugId('seed-class', `${teacher.name ?? teacher.id}-${def.name}`)
+
+    await prisma.classSection.upsert({
+      where: { id: classId },
+      update: {},
+      create: {
+        id: classId,
+        name: def.name,
+        subject: def.subject,
+        grade: def.grade,
+        teacherId: teacher.id,
+        schoolId: schools[i % schools.length].id,
+        meetings: {
+          create: {
+            id: slugId('seed-meeting', classId),
+            dayOfWeek: def.dayOfWeek,
+            startMinute: def.startMinute,
+            endMinute: def.endMinute,
+          },
+        },
+      },
+    })
+
+    await prisma.workshop.upsert({
+      where: { id: slugId('seed-workshop', classId) },
+      update: {},
+      create: {
+        id: slugId('seed-workshop', classId),
+        cycleId: cycle.id,
+        classSectionId: classId,
+        status: 'UNSCHEDULED', // scheduledStart/End + assignments filled by the algorithm
+      },
+    })
+  }
+
   console.log('\nSeed complete. Sign in with any of these:\n')
   const rows = [
     ...adminUsers.map((u) => ({ role: 'ADMIN', email: u.email, name: u.name })),
