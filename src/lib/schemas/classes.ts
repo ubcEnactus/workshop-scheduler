@@ -9,15 +9,17 @@ export const classSectionSchema = z.object({
 })
 
 // dayOfWeek: 0=Mon … 4=Fri. startMinute/endMinute: minutes from local midnight.
-export const classMeetingSchema = z.object({
-  classSectionId: z.string().cuid(),
-  dayOfWeek: z.number().int().min(0).max(4),
-  startMinute: z.number().int().min(0).max(1439),
-  endMinute: z.number().int().min(1).max(1440),
-}).refine((d) => d.endMinute > d.startMinute, {
-  message: 'End time must be after start time.',
-  path: ['endMinute'],
-})
+export const classMeetingSchema = z
+  .object({
+    classSectionId: z.string().cuid(),
+    dayOfWeek: z.number().int().min(0).max(4),
+    startMinute: z.number().int().min(0).max(1439),
+    endMinute: z.number().int().min(1).max(1440),
+  })
+  .refine((d) => d.endMinute > d.startMinute, {
+    message: 'End time must be after start time.',
+    path: ['endMinute'],
+  })
 
 export const classSectionIdSchema = z.object({
   id: z.string().cuid(),

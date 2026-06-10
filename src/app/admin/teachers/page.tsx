@@ -64,9 +64,7 @@ export default async function TeachersPage() {
       </form>
 
       <ul className="mt-12 divide-y">
-        {teachers.length === 0 && (
-          <li className="py-4 text-sm text-zinc-500">No teachers yet.</li>
-        )}
+        {teachers.length === 0 && <li className="py-4 text-sm text-zinc-500">No teachers yet.</li>}
         {teachers.map((teacher) => (
           <li key={teacher.id} className="flex items-center justify-between py-3">
             <div>

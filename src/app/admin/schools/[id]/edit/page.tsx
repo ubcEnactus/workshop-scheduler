@@ -3,11 +3,7 @@ import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import { updateSchool } from '../../actions'
 
-export default async function EditSchoolPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function EditSchoolPage({ params }: { params: Promise<{ id: string }> }) {
   await requireRole('ADMIN')
   const { id } = await params
 

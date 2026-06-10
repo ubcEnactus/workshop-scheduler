@@ -38,17 +38,11 @@ export default async function ClassesPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium">Subject (optional)</label>
-            <input
-              name="subject"
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            />
+            <input name="subject" className="mt-1 block w-full rounded border px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="block text-sm font-medium">Grade (optional)</label>
-            <input
-              name="grade"
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            />
+            <input name="grade" className="mt-1 block w-full rounded border px-3 py-2 text-sm" />
           </div>
         </div>
         <div>
@@ -90,9 +84,7 @@ export default async function ClassesPage() {
       </form>
 
       <ul className="mt-12 divide-y">
-        {classes.length === 0 && (
-          <li className="py-4 text-sm text-zinc-500">No classes yet.</li>
-        )}
+        {classes.length === 0 && <li className="py-4 text-sm text-zinc-500">No classes yet.</li>}
         {classes.map((cls) => (
           <li key={cls.id} className="flex items-center justify-between py-3">
             <div>

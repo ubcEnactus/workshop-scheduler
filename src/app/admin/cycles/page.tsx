@@ -77,9 +77,7 @@ export default async function CyclesPage() {
       </form>
 
       <ul className="mt-12 divide-y">
-        {cycles.length === 0 && (
-          <li className="py-4 text-sm text-zinc-500">No cycles yet.</li>
-        )}
+        {cycles.length === 0 && <li className="py-4 text-sm text-zinc-500">No cycles yet.</li>}
         {cycles.map((cycle) => (
           <li key={cycle.id} className="flex items-start justify-between py-4">
             <div>

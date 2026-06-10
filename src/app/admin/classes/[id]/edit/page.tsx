@@ -6,16 +6,14 @@ import { updateClassSection, addMeeting, deleteMeeting } from '../../actions'
 const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 function minutesToTime(minutes: number): string {
-  const h = Math.floor(minutes / 60).toString().padStart(2, '0')
+  const h = Math.floor(minutes / 60)
+    .toString()
+    .padStart(2, '0')
   const m = (minutes % 60).toString().padStart(2, '0')
   return `${h}:${m}`
 }
 
-export default async function EditClassPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function EditClassPage({ params }: { params: Promise<{ id: string }> }) {
   await requireRole('ADMIN')
   const { id } = await params
 
@@ -36,7 +34,7 @@ export default async function EditClassPage({
   if (!cls) notFound()
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16 space-y-12">
+    <main className="mx-auto max-w-2xl space-y-12 px-6 py-16">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight">Edit class</h1>
 
@@ -123,7 +121,8 @@ export default async function EditClassPage({
           {cls.meetings.map((m) => (
             <li key={m.id} className="flex items-center justify-between py-3">
               <span className="text-sm">
-                {DAY_LABELS[m.dayOfWeek]} · {minutesToTime(m.startMinute)}–{minutesToTime(m.endMinute)}
+                {DAY_LABELS[m.dayOfWeek]} · {minutesToTime(m.startMinute)}–
+                {minutesToTime(m.endMinute)}
               </span>
               <form action={deleteMeeting}>
                 <input type="hidden" name="id" value={m.id} />
