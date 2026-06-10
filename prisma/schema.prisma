@@ -93,6 +93,7 @@ model Availability {
 
   @@unique([userId, dayOfWeek, startMin])
   @@index([dayOfWeek, startMin])
+}
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 
