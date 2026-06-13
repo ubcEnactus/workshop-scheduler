@@ -1,4 +1,3 @@
-<<<<<<< HEAD:src/lib/auth.ts
 import NextAuth, { type DefaultSession } from 'next-auth'
 import Resend from 'next-auth/providers/resend'
 import { PrismaAdapter } from '@auth/prisma-adapter'
