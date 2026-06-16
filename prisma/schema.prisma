@@ -87,7 +87,7 @@ model Availability {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   dayOfWeek Int // 0=Mon … 4=Fri (matches the grid UI ordering; no weekends)
-  startMin  Int // minutes from midnight; 30-min slots. School-hours window (Mon–Fri 8:30–3) enforced in the app layer, not the DB.
+  startMin  Int // minutes from local midnight (America/Vancouver); 30-min slots. School-hours window (Mon–Fri 8:30–3) enforced in the app layer, not the DB.
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
