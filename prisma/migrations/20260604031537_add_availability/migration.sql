@@ -9,7 +9,7 @@ CREATE TABLE "Availability" (
 
     CONSTRAINT "Availability_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "Availability_valid_slot" CHECK (
-      "dayOfWeek" BETWEEN 0 AND 6
+      "dayOfWeek" BETWEEN 0 AND 4
       AND "startMin" BETWEEN 0 AND 1439
       AND ("startMin" % 30) = 0
     )
