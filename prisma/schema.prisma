@@ -2,7 +2,6 @@
 //
 // Identity (User, School) + NextAuth adapter tables, plus the scheduling
 // domain: Cycle, ClassSection, ClassMeeting, Workshop, Assignment.
-// (PA availability is a separate model owned by ENCT-027 — not defined here.)
 //
 // Conventions:
 // - cuid() ids
@@ -51,8 +50,6 @@ model User {
   // Scheduling domain (back-relations)
   classesTaught ClassSection[] @relation("TeacherClasses") // role = TEACHER
   assignments   Assignment[]   @relation("PaAssignments") // role = PA
-  // NOTE: PA availability is owned by a separate workstream (ENCT-027). Add the
-  // back-relation here once that model lands.
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -157,9 +154,6 @@ model ClassMeeting {
 
   @@index([classSectionId])
 }
-
-// NOTE: PA availability lives in a separate model owned by ENCT-027 and is
-// intentionally not defined here. Don't add it without coordinating designs.
 
 enum WorkshopStatus {
   UNSCHEDULED
