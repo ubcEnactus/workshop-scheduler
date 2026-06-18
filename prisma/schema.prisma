@@ -2,7 +2,6 @@
 //
 // Identity (User, School) + NextAuth adapter tables, plus the scheduling
 // domain: Cycle, ClassSection, ClassMeeting, Workshop, Assignment.
-// (PA availability is a separate model owned by ENCT-027 — not defined here.)
 //
 // Conventions:
 // - cuid() ids
@@ -44,14 +43,13 @@ model User {
   schoolId String?
   school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
-  accounts Account[]
-  sessions Session[]
+  accounts        Account[]
+  sessions        Session[]
+  availabilities  Availability[]
 
   // Scheduling domain (back-relations)
   classesTaught ClassSection[] @relation("TeacherClasses") // role = TEACHER
   assignments   Assignment[]   @relation("PaAssignments") // role = PA
-  // NOTE: PA availability is owned by a separate workstream (ENCT-027). Add the
-  // back-relation here once that model lands.
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -77,6 +75,22 @@ model School {
   @@index([deletedAt])
 }
 
+// Weekly-recurring availability. One row per ticked 30-minute slot, Mon–Fri
+// during school hours (8:30 AM–3:00 PM). Resolving weekly slots to concrete
+// dates is the scheduler's job, not this schema's. Hard delete (AGENTS.md
+// default for new models).
+model Availability {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek Int // 0=Mon … 4=Fri (matches the grid UI ordering; no weekends)
+  startMin  Int // minutes from local midnight (America/Vancouver); 30-min slots. School-hours window (Mon–Fri 8:30–3) enforced in the app layer, not the DB.
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, dayOfWeek, startMin])
+  @@index([dayOfWeek, startMin])
+}
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 
@@ -140,9 +154,6 @@ model ClassMeeting {
 
   @@index([classSectionId])
 }
-
-// NOTE: PA availability lives in a separate model owned by ENCT-027 and is
-// intentionally not defined here. Don't add it without coordinating designs.
 
 enum WorkshopStatus {
   UNSCHEDULED
