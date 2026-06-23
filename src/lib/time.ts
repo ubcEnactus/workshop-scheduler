@@ -13,6 +13,7 @@ export function getDatesForDayOfWeek(
   startDate: string,
   endDate: string
 ): string[] {
+  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 4) return []
   const target = toUtcDay(dayOfWeek)
   const dates: string[] = []
   const end = new Date(endDate + 'T00:00:00Z')
