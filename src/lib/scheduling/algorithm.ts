@@ -1,142 +1,160 @@
-import { availabilityCovers, getDatesForDayOfWeek } from '../time'
-import type { Assignment, Workshop } from '../types'
-import { getStore, nextId, updateAssignments, updateWorkshops } from './store'
+import { availabilityCovers, getDatesForDayOfWeek, intervalsOverlap, vancouverToUtc } from '../time'
+import type { Assignment, ClassMeeting, Cycle, Workshop } from '@prisma/client'
+
+export interface PAAvailability {
+  paId: string
+  dayOfWeek: number
+  startMinute: number
+  endMinute: number
+}
 
 export interface ScheduleResult {
   workshops: Workshop[]
-  assignments: Assignment[]
+  assignments: Omit<Assignment, 'assignedAt'>[]
 }
 
 function findAvailablePAs(
   dayOfWeek: number,
-  startTime: string,
-  endTime: string,
-  availabilities: ReturnType<typeof getStore>['availabilities']
+  startMinute: number,
+  endMinute: number,
+  availabilities: PAAvailability[]
 ): string[] {
   const ids = availabilities
     .filter(
       (av) =>
         av.dayOfWeek === dayOfWeek &&
-        availabilityCovers(startTime, endTime, av.startTime, av.endTime)
+        availabilityCovers(startMinute, endMinute, av.startMinute, av.endMinute)
     )
     .map((av) => av.paId)
   return [...new Set(ids)]
 }
 
-/**
- * Runs the scheduling algorithm against the current store state.
- *
- * Idempotent: clears PROPOSED workshops/assignments and re-derives them on
- * every call. CONFIRMED workshops are left untouched.
- *
- * PA conflict-safe: tracks which PAs are already booked per concrete time slot
- * so the same PA is never double-assigned across concurrent workshops.
- */
-export function runSchedule(): ScheduleResult {
-  const { cycle, classMeetings, availabilities, workshops, assignments } = getStore()
-
+export function runSchedule(
+  cycle: Cycle,
+  classMeetings: ClassMeeting[],
+  workshops: Workshop[],
+  assignments: Assignment[],
+  availabilities: PAAvailability[],
+  generateId: () => string
+): ScheduleResult {
   const keptAssignments = assignments.filter((a) => a.status === 'CONFIRMED')
-  const newAssignments: Assignment[] = [...keptAssignments]
+  const newAssignments: Omit<Assignment, 'assignedAt'>[] = [...keptAssignments]
 
-  // Track booked PAs per concrete slot "YYYY-MM-DD:HH:MM"
-  const bookedPerSlot = new Map<string, Set<string>>()
+  const bookedPerDate = new Map<
+    string,
+    { paId: string; startMinute: number; endMinute: number }[]
+  >()
 
   for (const a of keptAssignments) {
     const ws = workshops.find((w) => w.id === a.workshopId)
-    if (ws?.scheduledStart) {
-      const key = `${ws.scheduledStart.slice(0, 10)}:${ws.scheduledStart.slice(11, 16)}`
-      if (!bookedPerSlot.has(key)) bookedPerSlot.set(key, new Set())
-      bookedPerSlot.get(key)!.add(a.paId)
+    const meeting = classMeetings.find((cm) => cm.classSectionId === ws?.classSectionId)
+    if (ws?.scheduledStart && meeting) {
+      // Find local date from scheduledStart (which is UTC).
+      // A quick hack for the date key: we can format scheduledStart back to YYYY-MM-DD in Vancouver,
+      // or we can just derive it assuming the algorithm logic is predictable.
+      // But actually, it's safer to use the meeting's properties since they don't change.
+      // In this system, dates come from `getDatesForDayOfWeek(meeting.dayOfWeek, ...)`.
+      const dates = getDatesForDayOfWeek(
+        meeting.dayOfWeek,
+        cycle.startDate.toISOString().slice(0, 10),
+        cycle.endDate.toISOString().slice(0, 10)
+      )
+      if (dates.length > 0) {
+        const date = dates[0]
+        if (!bookedPerDate.has(date)) bookedPerDate.set(date, [])
+        bookedPerDate
+          .get(date)!
+          .push({ paId: a.paId, startMinute: meeting.startMinute, endMinute: meeting.endMinute })
+      }
     }
   }
 
   const newWorkshops: Workshop[] = []
 
   for (const ws of workshops) {
-    if (ws.status === 'CONFIRMED') {
+    if (ws.status === 'CONFIRMED' || ws.status === 'COMPLETED' || ws.status === 'CANCELLED') {
       newWorkshops.push(ws)
       continue
     }
 
-    const meeting = classMeetings.find((cm) => cm.id === ws.classMeetingId)
+    const meeting = classMeetings.find((cm) => cm.classSectionId === ws.classSectionId)
     if (!meeting) {
       newWorkshops.push({
         ...ws,
-        status: 'UNDER_SUPPLIED',
-        scheduledStart: undefined,
-        scheduledEnd: undefined,
+        status: 'UNSCHEDULED', // Previously UNDER_SUPPLIED but UNSCHEDULED isn't an error state in Prisma? Wait, Prisma WorkshopStatus has UNSCHEDULED, SCHEDULED, CONFIRMED, COMPLETED, CANCELLED.
+        // Prisma schema doesn't have UNDER_SUPPLIED. Let's use UNSCHEDULED if we can't schedule it.
+        scheduledStart: null,
+        scheduledEnd: null,
       })
       continue
     }
 
-    const dates = getDatesForDayOfWeek(meeting.dayOfWeek, cycle.startDate, cycle.endDate)
+    const cycleStartStr =
+      typeof cycle.startDate === 'string'
+        ? cycle.startDate
+        : (cycle.startDate as Date).toISOString().slice(0, 10)
+    const cycleEndStr =
+      typeof cycle.endDate === 'string'
+        ? cycle.endDate
+        : (cycle.endDate as Date).toISOString().slice(0, 10)
+
+    const dates = getDatesForDayOfWeek(meeting.dayOfWeek, cycleStartStr, cycleEndStr)
     if (dates.length === 0) {
       newWorkshops.push({
         ...ws,
-        status: 'UNDER_SUPPLIED',
-        scheduledStart: undefined,
-        scheduledEnd: undefined,
+        status: 'UNSCHEDULED',
+        scheduledStart: null,
+        scheduledEnd: null,
       })
       continue
     }
 
     const date = dates[0]
-    const slotKey = `${date}:${meeting.startTime}`
-    const alreadyBooked = bookedPerSlot.get(slotKey) ?? new Set<string>()
+    const bookedOnDate = bookedPerDate.get(date) ?? []
+
+    // Find who is booked at a conflicting time
+    const conflictingPAIds = new Set(
+      bookedOnDate
+        .filter((b) =>
+          intervalsOverlap(b.startMinute, b.endMinute, meeting.startMinute, meeting.endMinute)
+        )
+        .map((b) => b.paId)
+    )
 
     const availablePAIds = findAvailablePAs(
       meeting.dayOfWeek,
-      meeting.startTime,
-      meeting.endTime,
+      meeting.startMinute,
+      meeting.endMinute,
       availabilities
-    ).filter((paId) => !alreadyBooked.has(paId))
+    ).filter((paId) => !conflictingPAIds.has(paId))
 
     if (availablePAIds.length < ws.minPAs) {
       newWorkshops.push({
         ...ws,
-        status: 'UNDER_SUPPLIED',
-        scheduledStart: undefined,
-        scheduledEnd: undefined,
+        status: 'UNSCHEDULED', // Cannot meet minPAs
+        scheduledStart: null,
+        scheduledEnd: null,
       })
       continue
     }
 
     const assignedPAIds = availablePAIds.slice(0, ws.maxPAs)
 
-    if (!bookedPerSlot.has(slotKey)) bookedPerSlot.set(slotKey, new Set())
+    if (!bookedPerDate.has(date)) bookedPerDate.set(date, [])
     for (const paId of assignedPAIds) {
-      bookedPerSlot.get(slotKey)!.add(paId)
-      newAssignments.push({ id: nextId(), workshopId: ws.id, paId, status: 'PROPOSED' })
+      bookedPerDate
+        .get(date)!
+        .push({ paId, startMinute: meeting.startMinute, endMinute: meeting.endMinute })
+      newAssignments.push({ id: generateId(), workshopId: ws.id, paId, status: 'PROPOSED' })
     }
 
-    // No Z suffix — times are stored as wall-clock (local) so the browser
-    // displays them correctly without timezone conversion
     newWorkshops.push({
       ...ws,
-      status: 'PROPOSED',
-      scheduledStart: `${date}T${meeting.startTime}:00`,
-      scheduledEnd: `${date}T${meeting.endTime}:00`,
+      status: 'SCHEDULED', // Prisma Enum uses SCHEDULED instead of PROPOSED for Workshop
+      scheduledStart: vancouverToUtc(date, meeting.startMinute),
+      scheduledEnd: vancouverToUtc(date, meeting.endMinute),
     })
   }
-
-  updateWorkshops(newWorkshops)
-  updateAssignments(newAssignments)
-
-  return { workshops: newWorkshops, assignments: newAssignments }
-}
-
-export function confirmSchedule(): ScheduleResult {
-  const { workshops, assignments } = getStore()
-
-  const newWorkshops = workshops.map((ws) =>
-    ws.status === 'PROPOSED' ? { ...ws, status: 'CONFIRMED' as const } : ws
-  )
-  const newAssignments = assignments.map((a) =>
-    a.status === 'PROPOSED' ? { ...a, status: 'CONFIRMED' as const } : a
-  )
-
-  updateWorkshops(newWorkshops)
-  updateAssignments(newAssignments)
 
   return { workshops: newWorkshops, assignments: newAssignments }
 }

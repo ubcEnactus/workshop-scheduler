@@ -39,13 +39,64 @@ export function timeToMinutes(time: string): number {
 
 /** Returns true if PA availability window fully covers the meeting window. */
 export function availabilityCovers(
-  meetingStart: string,
-  meetingEnd: string,
-  availStart: string,
-  availEnd: string
+  meetingStart: number | string,
+  meetingEnd: number | string,
+  availStart: number | string,
+  availEnd: number | string
 ): boolean {
-  return (
-    timeToMinutes(availStart) <= timeToMinutes(meetingStart) &&
-    timeToMinutes(availEnd) >= timeToMinutes(meetingEnd)
+  const ms = typeof meetingStart === 'string' ? timeToMinutes(meetingStart) : meetingStart
+  const me = typeof meetingEnd === 'string' ? timeToMinutes(meetingEnd) : meetingEnd
+  const as = typeof availStart === 'string' ? timeToMinutes(availStart) : availStart
+  const ae = typeof availEnd === 'string' ? timeToMinutes(availEnd) : availEnd
+
+  return as <= ms && ae >= me
+}
+
+/** Returns true if two intervals overlap. */
+export function intervalsOverlap(
+  startA: number,
+  endA: number,
+  startB: number,
+  endB: number
+): boolean {
+  return startA < endB && startB < endA
+}
+
+/** Converts a Vancouver wall-clock date and minute to a UTC Date. */
+export function vancouverToUtc(dateString: string, minuteOfDay: number): Date {
+  const hours = Math.floor(minuteOfDay / 60)
+  const minutes = minuteOfDay % 60
+  const hh = String(hours).padStart(2, '0')
+  const mm = String(minutes).padStart(2, '0')
+  const datetimeStr = `${dateString}T${hh}:${mm}:00`
+
+  // Let's create it as UTC first to probe the DST status at that date
+  const probe = new Date(`${datetimeStr}Z`)
+
+  // Format the probe date in Vancouver time to extract the offset
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Vancouver',
+    timeZoneName: 'shortOffset',
+  })
+  const parts = formatter.formatToParts(probe)
+  const tzPart = parts.find((p) => p.type === 'timeZoneName')?.value // e.g. "GMT-7" or "GMT-8"
+
+  let offsetHours = 0
+  if (tzPart && tzPart.startsWith('GMT')) {
+    const offsetStr = tzPart.slice(3)
+    if (offsetStr) offsetHours = parseInt(offsetStr, 10)
+  }
+
+  const utcHours = hours - offsetHours
+
+  return new Date(
+    Date.UTC(
+      parseInt(dateString.slice(0, 4), 10),
+      parseInt(dateString.slice(5, 7), 10) - 1,
+      parseInt(dateString.slice(8, 10), 10),
+      utcHours,
+      minutes,
+      0
+    )
   )
 }

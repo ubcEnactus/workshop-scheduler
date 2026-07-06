@@ -1,20 +1,91 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
+import { runSchedule, PAAvailability } from '../algorithm'
+import type { Assignment, ClassMeeting, Cycle, Workshop } from '@prisma/client'
 
-import { confirmSchedule, runSchedule } from '../algorithm'
-import { getStore, resetStore, updateWorkshops } from '../store'
+const mockCycle: Cycle = {
+  id: 'cycle-1',
+  name: 'Week 1 – June 2026',
+  startDate: new Date('2026-06-08T00:00:00Z'),
+  endDate: new Date('2026-06-12T00:00:00Z'),
+  status: 'OPEN',
+  createdAt: new Date(),
+  updatedAt: new Date(),
+}
 
-beforeEach(() => {
-  resetStore()
-})
+const mockClassMeetings: ClassMeeting[] = [
+  { id: 'cm-1', classSectionId: 'cs-1', dayOfWeek: 0, startMinute: 540, endMinute: 600 }, // Mon 09:00 - 10:00
+  { id: 'cm-2', classSectionId: 'cs-2', dayOfWeek: 2, startMinute: 840, endMinute: 900 }, // Wed 14:00 - 15:00
+  { id: 'cm-3', classSectionId: 'cs-3', dayOfWeek: 4, startMinute: 660, endMinute: 720 }, // Fri 11:00 - 12:00
+]
+
+const mockWorkshops: Workshop[] = [
+  {
+    id: 'ws-1',
+    cycleId: 'cycle-1',
+    classSectionId: 'cs-1',
+    minPAs: 1,
+    maxPAs: 2,
+    status: 'UNSCHEDULED',
+    scheduledStart: null,
+    scheduledEnd: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'ws-2',
+    cycleId: 'cycle-1',
+    classSectionId: 'cs-2',
+    minPAs: 1,
+    maxPAs: 3,
+    status: 'UNSCHEDULED',
+    scheduledStart: null,
+    scheduledEnd: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 'ws-3',
+    cycleId: 'cycle-1',
+    classSectionId: 'cs-3',
+    minPAs: 3,
+    maxPAs: 4,
+    status: 'UNSCHEDULED',
+    scheduledStart: null,
+    scheduledEnd: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+]
+
+const mockAvailabilities: PAAvailability[] = [
+  { paId: 'pa-1', dayOfWeek: 0, startMinute: 480, endMinute: 660 }, // Mon 08-11
+  { paId: 'pa-1', dayOfWeek: 2, startMinute: 780, endMinute: 960 }, // Wed 13-16
+  { paId: 'pa-2', dayOfWeek: 0, startMinute: 480, endMinute: 660 }, // Mon 08-11
+  { paId: 'pa-2', dayOfWeek: 4, startMinute: 600, endMinute: 780 }, // Fri 10-13
+  { paId: 'pa-3', dayOfWeek: 2, startMinute: 780, endMinute: 960 }, // Wed 13-16
+  { paId: 'pa-3', dayOfWeek: 4, startMinute: 600, endMinute: 780 }, // Fri 10-13
+]
+
+let idCounter = 1
+const generateId = () => `a-${idCounter++}`
 
 describe('runSchedule', () => {
   it('schedules ws-1 (Mon) into a valid slot with Alice and Bob', () => {
-    const { workshops, assignments } = runSchedule()
+    const { workshops, assignments } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      mockWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
 
     const ws = workshops.find((w) => w.id === 'ws-1')!
-    expect(ws.status).toBe('PROPOSED')
-    expect(ws.scheduledStart).toBe('2026-06-08T09:00:00')
-    expect(ws.scheduledEnd).toBe('2026-06-08T10:00:00')
+    expect(ws.status).toBe('SCHEDULED')
+    // scheduledStart should be UTC representation of Vancouver 09:00 on June 8, 2026.
+    // Vancouver is PDT (UTC-7) in June, so UTC should be 16:00
+    expect(ws.scheduledStart?.toISOString()).toBe('2026-06-08T16:00:00.000Z')
+    expect(ws.scheduledEnd?.toISOString()).toBe('2026-06-08T17:00:00.000Z')
 
     const paIds = assignments.filter((a) => a.workshopId === 'ws-1').map((a) => a.paId)
     expect(paIds).toContain('pa-1') // Alice
@@ -23,64 +94,99 @@ describe('runSchedule', () => {
   })
 
   it('schedules ws-2 (Wed) into a valid slot with Alice and Carol', () => {
-    const { workshops, assignments } = runSchedule()
+    const { workshops, assignments } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      mockWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
 
     const ws = workshops.find((w) => w.id === 'ws-2')!
-    expect(ws.status).toBe('PROPOSED')
-    expect(ws.scheduledStart).toBe('2026-06-10T14:00:00')
+    expect(ws.status).toBe('SCHEDULED')
+    expect(ws.scheduledStart?.toISOString()).toBe('2026-06-10T21:00:00.000Z') // Wed 14:00 + 7h = 21:00
 
     const paIds = assignments.filter((a) => a.workshopId === 'ws-2').map((a) => a.paId)
     expect(paIds).toContain('pa-1') // Alice
     expect(paIds).toContain('pa-3') // Carol
   })
 
-  it('flags ws-3 (Fri, minPAs=3) as UNDER_SUPPLIED when only 2 PAs are available', () => {
-    const { workshops } = runSchedule()
+  it('flags ws-3 (Fri, minPAs=3) as UNSCHEDULED when only 2 PAs are available', () => {
+    const { workshops, assignments } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      mockWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
 
     const ws = workshops.find((w) => w.id === 'ws-3')!
-    expect(ws.status).toBe('UNDER_SUPPLIED')
+    expect(ws.status).toBe('UNSCHEDULED')
 
-    const paIds = getStore().assignments.filter((a) => a.workshopId === 'ws-3')
+    const paIds = assignments.filter((a) => a.workshopId === 'ws-3')
     expect(paIds.length).toBe(0)
   })
 
   it('day/time matching: ClassMeeting dayOfWeek=0 maps to 2026-06-08 (Monday)', () => {
-    const { workshops } = runSchedule()
+    const { workshops } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      mockWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
     const ws = workshops.find((w) => w.id === 'ws-1')!
     // 2026-06-08 is a Monday — regression test for 0=Mon alignment
-    expect(ws.scheduledStart?.startsWith('2026-06-08')).toBe(true)
+    expect(ws.scheduledStart?.toISOString().startsWith('2026-06-08')).toBe(true)
   })
 
   it('day/time matching: ClassMeeting dayOfWeek=4 maps to 2026-06-12 (Friday)', () => {
-    // ws-3 is UNDER_SUPPLIED but its meeting is on Fri — check via ws-3's class meeting date
+    // ws-3 is UNSCHEDULED but its meeting is on Fri — check via ws-3's class meeting date
     // indirectly: run with a patched ws-3 that has minPAs=1
-    resetStore()
-    const { workshops: ws0 } = runSchedule()
-    // ws-3 is under-supplied, but ws-2 (Wed=2) should map to 2026-06-10
-    const ws2 = ws0.find((w) => w.id === 'ws-2')!
-    expect(ws2.scheduledStart?.startsWith('2026-06-10')).toBe(true) // Wednesday
+    const patchedWorkshops = mockWorkshops.map((w) => (w.id === 'ws-3' ? { ...w, minPAs: 1 } : w))
+    const { workshops } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      patchedWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
+    const ws2 = workshops.find((w) => w.id === 'ws-2')!
+    expect(ws2.scheduledStart?.toISOString().startsWith('2026-06-10')).toBe(true) // Wednesday
+    const ws3 = workshops.find((w) => w.id === 'ws-3')!
+    expect(ws3.scheduledStart?.toISOString().startsWith('2026-06-12')).toBe(true) // Friday
   })
 })
 
 describe('idempotency', () => {
   it('running the algorithm twice produces the same result as running it once', () => {
-    const first = runSchedule()
-    resetStore()
-    runSchedule()
-    const second = runSchedule()
+    const first = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      mockWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
+    // Running again using first output
+    const second = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      first.workshops,
+      first.assignments as Assignment[],
+      mockAvailabilities,
+      generateId
+    )
 
-    const firstProposed = first.workshops.filter((w) => w.status === 'PROPOSED').map((w) => w.id)
-    const secondProposed = second.workshops.filter((w) => w.status === 'PROPOSED').map((w) => w.id)
-    expect(firstProposed.sort()).toEqual(secondProposed.sort())
-  })
-
-  it('re-running does not duplicate assignments', () => {
-    runSchedule()
-    runSchedule()
-    const { assignments } = getStore()
-    const ws1Assignments = assignments.filter((a) => a.workshopId === 'ws-1')
-    // Should still only have 2 assignments (Alice + Bob), not 4
-    expect(ws1Assignments.length).toBe(2)
+    const firstScheduled = first.workshops.filter((w) => w.status === 'SCHEDULED').map((w) => w.id)
+    const secondScheduled = second.workshops
+      .filter((w) => w.status === 'SCHEDULED')
+      .map((w) => w.id)
+    expect(firstScheduled.sort()).toEqual(secondScheduled.sort())
   })
 })
 
@@ -88,16 +194,22 @@ describe('PA conflict avoidance', () => {
   it('does not double-book a PA across two workshops in the same time slot', () => {
     // Point ws-2 at the same class meeting as ws-1 (both Mon 09:00–10:00)
     // Alice and Bob are available Mon — they should be split, not shared
-    const { workshops } = getStore()
-    updateWorkshops(
-      workshops.map((ws) => (ws.id === 'ws-2' ? { ...ws, classMeetingId: 'cm-1' } : ws))
+    const patchedWorkshops = mockWorkshops.map((w) =>
+      w.id === 'ws-2' ? { ...w, classSectionId: 'cs-1' } : w
     )
 
-    const { assignments } = runSchedule()
+    const { assignments, workshops } = runSchedule(
+      mockCycle,
+      mockClassMeetings,
+      patchedWorkshops,
+      [],
+      mockAvailabilities,
+      generateId
+    )
 
     const monAssignments = assignments.filter((a) => {
-      const ws = getStore().workshops.find((w) => w.id === a.workshopId)
-      return ws?.scheduledStart?.startsWith('2026-06-08')
+      const ws = workshops.find((w) => w.id === a.workshopId)
+      return ws?.scheduledStart?.toISOString().startsWith('2026-06-08')
     })
 
     // Count how many workshops each PA is assigned to on Mon
@@ -111,27 +223,5 @@ describe('PA conflict avoidance', () => {
     for (const [, workshopIds] of paWorkshopCount) {
       expect(workshopIds.size).toBe(1)
     }
-  })
-})
-
-describe('confirmSchedule', () => {
-  it('advances PROPOSED workshops to CONFIRMED', () => {
-    runSchedule()
-    const { workshops } = confirmSchedule()
-    const ws1 = workshops.find((w) => w.id === 'ws-1')!
-    expect(ws1.status).toBe('CONFIRMED')
-  })
-
-  it('advances PROPOSED assignments to CONFIRMED', () => {
-    runSchedule()
-    const { assignments } = confirmSchedule()
-    expect(assignments.every((a) => a.status === 'CONFIRMED')).toBe(true)
-  })
-
-  it('does not change UNDER_SUPPLIED workshops', () => {
-    runSchedule()
-    const { workshops } = confirmSchedule()
-    const ws3 = workshops.find((w) => w.id === 'ws-3')!
-    expect(ws3.status).toBe('UNDER_SUPPLIED')
   })
 })
