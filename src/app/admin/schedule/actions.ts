@@ -25,7 +25,7 @@ export async function getProposals() {
     include: { classSection: true },
   })
   const assignments = await prisma.assignment.findMany()
-  const pas = await prisma.user.findMany({ where: { role: 'PA' } })
+  const pas = await prisma.user.findMany({ where: { role: 'PA', deletedAt: null } })
 
   return { workshops, assignments, pas }
 }
@@ -49,7 +49,10 @@ export async function runScheduleAction() {
   // Actually, wait, fake availabilities use 'pa-1', 'pa-2'. In the database, the users have UUIDs.
   // To make the algorithm work with the fake availabilities, we need to map the fake 'pa-x' IDs
   // to the real PA UUIDs in the database.
-  const pas = await prisma.user.findMany({ where: { role: 'PA' }, orderBy: { email: 'asc' } })
+  const pas = await prisma.user.findMany({
+    where: { role: 'PA', deletedAt: null },
+    orderBy: { email: 'asc' },
+  })
 
   // Mapping logic: pa1 -> pas[0], pa2 -> pas[1], etc.
   const paIdMap: Record<string, string> = {

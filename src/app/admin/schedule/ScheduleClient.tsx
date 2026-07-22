@@ -47,8 +47,8 @@ export default function ScheduleClient({ initialData }: { initialData: Proposals
     try {
       await runScheduleAction()
       setMessage({ text: 'Schedule generated.' })
-    } catch (e: any) {
-      setMessage({ text: e.message || 'Error running schedule', error: true })
+    } catch (e: unknown) {
+      setMessage({ text: e instanceof Error ? e.message : 'Error running schedule', error: true })
     } finally {
       setLoading(false)
     }
@@ -60,8 +60,8 @@ export default function ScheduleClient({ initialData }: { initialData: Proposals
     try {
       await confirmAllAction()
       setMessage({ text: 'All proposals confirmed.' })
-    } catch (e: any) {
-      setMessage({ text: e.message || 'Error confirming', error: true })
+    } catch (e: unknown) {
+      setMessage({ text: e instanceof Error ? e.message : 'Error confirming', error: true })
     } finally {
       setLoading(false)
     }
@@ -138,13 +138,14 @@ export default function ScheduleClient({ initialData }: { initialData: Proposals
                   </td>
                   <td className="px-4 py-3 text-gray-600">
                     {ws.scheduledStart
-                      ? new Date(ws.scheduledStart).toLocaleString(undefined, {
+                      ? new Intl.DateTimeFormat('en-CA', {
+                          timeZone: 'America/Vancouver',
                           weekday: 'short',
                           month: 'short',
                           day: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit',
-                        })
+                        }).format(new Date(ws.scheduledStart))
                       : '—'}
                   </td>
                   <td className="px-4 py-3 text-gray-600">{wsPAs.join(', ') || '—'}</td>
