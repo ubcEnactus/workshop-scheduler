@@ -75,7 +75,7 @@ export default async function TeacherHome() {
                 </div>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                   {w.cycle.name}
-                  {w.classSection.teacher.name ? ` · ${w.classSection.teacher.name}` : ''}
+                  {w.classSection.teacher?.name ? ` · ${w.classSection.teacher.name}` : ''}
                 </p>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                   {workshopTime(w.scheduledStart, w.scheduledEnd)}

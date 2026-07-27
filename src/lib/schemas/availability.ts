@@ -20,7 +20,10 @@ export const SLOT_STARTS = Array.from(
 
 const slotSchema = z
   .string()
-  .regex(/^[0-4]-\d{3}$/, 'Invalid slot')
+  // Shape check only — the real bounds are enforced by the .pipe() below, so
+  // this must not hardcode a digit count (a later DAY_END_MIN past 999 would
+  // otherwise silently reject valid slots).
+  .regex(/^[0-4]-\d+$/, 'Invalid slot')
   .transform((value) => {
     const [day, start] = value.split('-')
     return { dayOfWeek: Number(day), startMin: Number(start) }
