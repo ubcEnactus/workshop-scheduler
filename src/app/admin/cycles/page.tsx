@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Vancouver',
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'short',
     day: 'numeric',

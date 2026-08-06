@@ -25,7 +25,13 @@ export async function openCycle(formData: FormData) {
     if (!cycle) throw new Error('Cycle not found.')
     if (cycle.status !== 'DRAFT') throw new Error('Only DRAFT cycles can be opened.')
 
-    const classes = await tx.classSection.findMany({ select: { id: true } })
+    const classes = await tx.classSection.findMany({
+      where: {
+        school: { deletedAt: null },
+        teacher: { deletedAt: null },
+      },
+      select: { id: true },
+    })
 
     if (classes.length > 0) {
       await tx.workshop.createMany({
