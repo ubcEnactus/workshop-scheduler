@@ -1,12 +1,19 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { FormError } from '@/components/form-error'
 import { createClassSection, deleteClassSection } from './actions'
 
-export default async function ClassesPage() {
+export default async function ClassesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
   await requireRole('ADMIN')
+  const { error } = await searchParams
 
   const [classes, teachers, schools] = await Promise.all([
     prisma.classSection.findMany({
+      where: { school: { deletedAt: null }, teacher: { deletedAt: null } },
       include: { teacher: true, school: true, meetings: true },
       orderBy: { name: 'asc' },
     }),
@@ -23,6 +30,10 @@ export default async function ClassesPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Classes</h1>
+
+      <div className="mt-6">
+        <FormError message={error} />
+      </div>
 
       <form action={createClassSection} className="mt-8 space-y-4">
         <h2 className="text-lg font-medium">Add class</h2>

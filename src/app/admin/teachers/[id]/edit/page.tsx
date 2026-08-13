@@ -1,11 +1,19 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
+import { FormError } from '@/components/form-error'
 import { updateTeacher } from '../../actions'
 
-export default async function EditTeacherPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditTeacherPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ error?: string }>
+}) {
   await requireRole('ADMIN')
   const { id } = await params
+  const { error } = await searchParams
 
   const [teacher, schools] = await Promise.all([
     prisma.user.findFirst({
@@ -21,6 +29,10 @@ export default async function EditTeacherPage({ params }: { params: Promise<{ id
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Edit teacher</h1>
+
+      <div className="mt-6">
+        <FormError message={error} />
+      </div>
 
       <form action={updateTeacher} className="mt-8 space-y-4">
         <input type="hidden" name="id" value={teacher.id} />
