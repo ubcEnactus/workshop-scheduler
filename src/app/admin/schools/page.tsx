@@ -1,9 +1,15 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { FormError } from '@/components/form-error'
 import { createSchool, softDeleteSchool } from './actions'
 
-export default async function SchoolsPage() {
+export default async function SchoolsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
   await requireRole('ADMIN')
+  const { error } = await searchParams
 
   const schools = await prisma.school.findMany({
     where: { deletedAt: null },
@@ -13,6 +19,10 @@ export default async function SchoolsPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Schools</h1>
+
+      <div className="mt-6">
+        <FormError message={error} />
+      </div>
 
       <form action={createSchool} className="mt-8 space-y-4">
         <h2 className="text-lg font-medium">Add school</h2>

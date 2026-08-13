@@ -12,7 +12,7 @@ export const cycleSchema = z
   })
 
 export const cycleIdSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().min(1),
 })
 
 export type CycleInput = z.infer<typeof cycleSchema>

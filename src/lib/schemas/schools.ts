@@ -6,7 +6,7 @@ export const schoolSchema = z.object({
 })
 
 export const schoolIdSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().min(1),
 })
 
 export type SchoolInput = z.infer<typeof schoolSchema>

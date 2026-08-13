@@ -1,5 +1,6 @@
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { FormError } from '@/components/form-error'
 import { createCycle, openCycle, closeCycle, deleteCycle } from './actions'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -25,8 +26,13 @@ function formatDate(date: Date): string {
   }).format(date)
 }
 
-export default async function CyclesPage() {
+export default async function CyclesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>
+}) {
   await requireRole('ADMIN')
+  const { error } = await searchParams
 
   const cycles = await prisma.cycle.findMany({
     include: { _count: { select: { workshops: true } } },
@@ -36,6 +42,10 @@ export default async function CyclesPage() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Cycles</h1>
+
+      <div className="mt-6">
+        <FormError message={error} />
+      </div>
 
       <form action={createCycle} className="mt-8 space-y-4">
         <h2 className="text-lg font-medium">New cycle</h2>

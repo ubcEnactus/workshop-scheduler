@@ -4,14 +4,14 @@ export const classSectionSchema = z.object({
   name: z.string().trim().min(1, 'Name is required.'),
   subject: z.string().trim().min(1).optional(),
   grade: z.string().trim().min(1).optional(),
-  teacherId: z.string().cuid('Teacher is required.'),
-  schoolId: z.string().cuid('School is required.'),
+  teacherId: z.string().min(1, 'Teacher is required.'),
+  schoolId: z.string().min(1, 'School is required.'),
 })
 
 // dayOfWeek: 0=Mon … 4=Fri. startMinute/endMinute: minutes from local midnight.
 export const classMeetingSchema = z
   .object({
-    classSectionId: z.string().cuid(),
+    classSectionId: z.string().min(1),
     dayOfWeek: z.number().int().min(0).max(4),
     startMinute: z.number().int().min(0).max(1439),
     endMinute: z.number().int().min(1).max(1440),
@@ -22,7 +22,7 @@ export const classMeetingSchema = z
   })
 
 export const classSectionIdSchema = z.object({
-  id: z.string().cuid(),
+  id: z.string().min(1),
 })
 
 export type ClassSectionInput = z.infer<typeof classSectionSchema>
