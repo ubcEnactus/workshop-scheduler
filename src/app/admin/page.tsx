@@ -7,6 +7,7 @@ const SECTIONS = [
   { href: '/admin/teachers', name: 'Teachers', blurb: 'Teacher accounts and school assignments.' },
   { href: '/admin/classes', name: 'Classes', blurb: 'Class sections and weekly meeting times.' },
   { href: '/admin/cycles', name: 'Cycles', blurb: 'Open and close scheduling cycles.' },
+  { href: '/admin/schedule', name: 'Schedule', blurb: 'Match PAs to workshops and confirm.' },
 ] as const
 
 export default async function AdminHome() {
