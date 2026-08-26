@@ -96,7 +96,7 @@ async function main() {
   // --- Scheduling domain ---
   // One cycle, one class per teacher (with a weekly meeting time), and an
   // unscheduled workshop per class — the realistic starting state the matching
-  // algorithm fills in. No availability here (owned by ENCT-027).
+  // algorithm fills in, together with the PA availability seeded below.
 
   const cycle = await prisma.cycle.upsert({
     where: { id: 'seed-cycle-spring-2026' },
@@ -154,6 +154,30 @@ async function main() {
       },
     })
   }
+
+  // PA availability — one row per ticked 30-minute slot (see the Availability
+  // model). Priya covers both class times; Pat only the Tuesday one, so a
+  // scheduler run produces a two-PA workshop and a one-PA workshop.
+  const SLOT_MINUTES = 30
+  const ticks = (dayOfWeek: number, startMin: number, endMin: number) =>
+    Array.from({ length: (endMin - startMin) / SLOT_MINUTES }, (_, i) => ({
+      dayOfWeek,
+      startMin: startMin + i * SLOT_MINUTES,
+    }))
+
+  const PA_AVAILABILITY = [
+    [...ticks(1, 570, 690), ...ticks(2, 780, 900)], // Priya: Tue 9:30–11:30, Wed 13:00–15:00
+    ticks(1, 570, 690), // Pat: Tue 9:30–11:30
+  ]
+
+  await Promise.all(
+    paUsers.map((pa, i) =>
+      prisma.availability.createMany({
+        data: (PA_AVAILABILITY[i] ?? []).map((slot) => ({ userId: pa.id, ...slot })),
+        skipDuplicates: true,
+      }),
+    ),
+  )
 
   console.log('\nSeed complete. Sign in with any of these:\n')
   const rows = [
