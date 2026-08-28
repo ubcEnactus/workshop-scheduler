@@ -92,3 +92,74 @@ export async function deleteCycle(formData: FormData) {
   await prisma.cycle.delete({ where: { id: id.data.id } })
   revalidatePath('/admin/cycles')
 }
+
+// Client-callable versions (accept string id, return result objects)
+
+export async function openCycleClient(
+  cycleId: string
+): Promise<{ ok: boolean; workshopCount?: number; error?: string }> {
+  await requireRole('ADMIN')
+
+  const cycle = await prisma.cycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { ok: false, error: 'Cycle not found.' }
+  if (cycle.status !== 'DRAFT') return { ok: false, error: 'Only draft cycles can be opened.' }
+
+  const classes = await prisma.classSection.findMany({
+    where: { school: { deletedAt: null }, teacher: { deletedAt: null } },
+    select: { id: true },
+  })
+
+  const opened = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.cycle.updateMany({
+      where: { id: cycleId, status: 'DRAFT' },
+      data: { status: 'OPEN' },
+    })
+    if (claimed.count === 0) return false
+
+    if (classes.length > 0) {
+      await tx.workshop.createMany({
+        data: classes.map((cls) => ({
+          cycleId,
+          classSectionId: cls.id,
+          status: 'UNSCHEDULED' as const,
+        })),
+      })
+    }
+    return true
+  })
+
+  if (!opened) return { ok: false, error: 'That cycle is no longer a draft.' }
+
+  revalidatePath('/admin/cycles')
+  return { ok: true, workshopCount: classes.length }
+}
+
+export async function closeCycleClient(
+  cycleId: string
+): Promise<{ ok: boolean; error?: string }> {
+  await requireRole('ADMIN')
+
+  const cycle = await prisma.cycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { ok: false, error: 'Cycle not found.' }
+  if (cycle.status === 'DRAFT' || cycle.status === 'CLOSED') {
+    return { ok: false, error: 'Only open or scheduled cycles can be closed.' }
+  }
+
+  await prisma.cycle.update({ where: { id: cycleId }, data: { status: 'CLOSED' } })
+  revalidatePath('/admin/cycles')
+  return { ok: true }
+}
+
+export async function deleteCycleClient(
+  cycleId: string
+): Promise<{ ok: boolean; error?: string }> {
+  await requireRole('ADMIN')
+
+  const cycle = await prisma.cycle.findUnique({ where: { id: cycleId } })
+  if (!cycle) return { ok: false, error: 'Cycle not found.' }
+  if (cycle.status !== 'DRAFT') return { ok: false, error: 'Only draft cycles can be deleted.' }
+
+  await prisma.cycle.delete({ where: { id: cycleId } })
+  revalidatePath('/admin/cycles')
+  return { ok: true }
+}

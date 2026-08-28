@@ -28,8 +28,8 @@ export async function createClassSection(formData: FormData) {
   }
   await prisma.classSection.create({ data: parsed.data })
   revalidatePath('/admin/classes')
+  redirect('/admin/classes')
 }
-
 export async function updateClassSection(formData: FormData) {
   await requireRole('ADMIN')
   const id = classSectionIdSchema.safeParse({ id: formData.get('id') })
