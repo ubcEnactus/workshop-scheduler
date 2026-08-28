@@ -15,6 +15,7 @@ import {
   unassignPA,
   swapPA,
   AssignmentError,
+  getAvailablePAsForWorkshop,
 } from '@/lib/scheduling/assignments'
 
 /**
@@ -36,7 +37,7 @@ export async function runScheduleAction(): Promise<
   const cycle = await findOpenCycle()
   if (!cycle) return { ok: false, error: 'No open cycle — open one from Cycles first.' }
 
-  const [classMeetings, workshops, assignments, slots, paUsers, workshopDetails] =
+  const [classMeetings, workshops, assignments, slots, paUsers, workshopDetails, blockedDateRows] =
     await Promise.all([
       prisma.classMeeting.findMany({
         where: { classSection: { school: { deletedAt: null }, teacher: { deletedAt: null } } },
@@ -54,7 +55,13 @@ export async function runScheduleAction(): Promise<
       }),
       prisma.workshop.findMany({
         where: { cycleId: cycle.id },
-        select: { id: true, classSection: { select: { school: { select: { community: true } } } } },
+        select: { id: true, classSectionId: true, classSection: { select: { schoolId: true, school: { select: { community: true } } } } },
+      }),
+      prisma.blockedDate.findMany({
+        where: {
+          date: { gte: cycle.startDate, lte: cycle.endDate },
+        },
+        select: { schoolId: true, date: true },
       }),
     ])
 
@@ -62,12 +69,45 @@ export async function runScheduleAction(): Promise<
   const workshopSchoolCommunities = new Map(
     workshopDetails.map((w) => [w.id, w.classSection.school.community])
   )
+  const workshopSchoolIds = new Map(
+    workshopDetails.map((w) => [w.id, w.classSection.schoolId])
+  )
+
+  // Build blocked dates set: "schoolId:YYYY-MM-DD" or "*:YYYY-MM-DD" for global
+  const blockedDates = new Set<string>()
+  for (const row of blockedDateRows) {
+    const dateKey = row.date.toISOString().slice(0, 10)
+    if (row.schoolId) {
+      blockedDates.add(`${row.schoolId}:${dateKey}`)
+    } else {
+      blockedDates.add(`*:${dateKey}`)
+    }
+  }
 
   const paIds = paUsers.map((u) => u.id)
   const [assignmentCounts, quotas] = await Promise.all([
     getAssignmentCountsForCycle(paIds, cycle.id),
     getPAQuotas(paIds),
   ])
+
+  // Build school affinity history from all prior confirmed assignments
+  const historyRows = await prisma.assignment.findMany({
+    where: {
+      paId: { in: paIds },
+      status: 'CONFIRMED',
+    },
+    select: { paId: true, workshop: { select: { classSection: { select: { schoolId: true } } } } },
+  })
+  const paSchoolHistory = new Map<string, Set<string>>()
+  for (const row of historyRows) {
+    const existing = paSchoolHistory.get(row.paId)
+    const schoolId = row.workshop.classSection.schoolId
+    if (existing) {
+      existing.add(schoolId)
+    } else {
+      paSchoolHistory.set(row.paId, new Set([schoolId]))
+    }
+  }
 
   const result = runSchedule({
     cycle,
@@ -80,6 +120,9 @@ export async function runScheduleAction(): Promise<
     assignmentCounts,
     quotas,
     generateId: () => randomUUID(),
+    blockedDates,
+    paSchoolHistory,
+    workshopSchoolIds,
   })
 
   await prisma.$transaction(async (tx) => {
@@ -253,4 +296,13 @@ export async function swapPAAction(formData: FormData): Promise<ActionResult> {
   revalidatePath('/admin/schedule')
   revalidatePath('/pa')
   return { ok: true }
+}
+
+export async function getAvailablePAsAction(workshopId: string) {
+  await requireRole('ADMIN')
+
+  const parsed = workshopIdSchema.safeParse({ id: workshopId })
+  if (!parsed.success) return []
+
+  return getAvailablePAsForWorkshop(parsed.data.id)
 }

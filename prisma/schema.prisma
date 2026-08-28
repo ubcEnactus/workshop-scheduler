@@ -77,6 +77,7 @@ model School {
 
   teachers      User[]
   classSections ClassSection[]
+  blockedDates  BlockedDate[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -101,6 +102,21 @@ model Availability {
   @@unique([userId, dayOfWeek, startMin])
   @@index([dayOfWeek, startMin])
 }
+// Blocked dates: holidays, pro-D days, training days. Per-school or global.
+// Hard delete (AGENTS.md default).
+model BlockedDate {
+  id       String   @id @default(cuid())
+  schoolId String?
+  school   School?  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  date     DateTime // UTC midnight of the blocked day
+  reason   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, date])
+  @@index([date])
+}
+
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 

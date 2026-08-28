@@ -41,6 +41,12 @@ export interface ScheduleInput {
   generateId: () => string
   /** Max one-way commute in minutes. Default 45. */
   maxCommuteMinutes?: number
+  /** Blocked dates per school. Key = "schoolId:YYYY-MM-DD" or "*:YYYY-MM-DD" for global. */
+  blockedDates?: Set<string>
+  /** PA id → set of school ids they have prior assignments at (for consistency preference). */
+  paSchoolHistory?: Map<string, Set<string>>
+  /** Workshop id → school id (for affinity lookups). */
+  workshopSchoolIds?: Map<string, string>
 }
 
 export interface ScheduleResult {
@@ -78,6 +84,19 @@ function conflictingPAs(bookings: Booking[], startMinute: number, endMinute: num
   )
 }
 
+/** Stable sort: PAs with prior history at this school float to the front. */
+function sortByAffinity(
+  paIds: string[],
+  schoolId: string,
+  history: Map<string, Set<string>>
+): string[] {
+  return [...paIds].sort((a, b) => {
+    const aHas = history.get(a)?.has(schoolId) ? 1 : 0
+    const bHas = history.get(b)?.has(schoolId) ? 1 : 0
+    return bHas - aHas // PAs with history sort first
+  })
+}
+
 /**
  * Fill unscheduled workshops from PA availability.
  *
@@ -103,6 +122,9 @@ export function runSchedule(input: ScheduleInput): ScheduleResult {
     quotas,
     generateId,
     maxCommuteMinutes = 45,
+    blockedDates = new Set<string>(),
+    paSchoolHistory = new Map<string, Set<string>>(),
+    workshopSchoolIds = new Map<string, string>(),
   } = input
 
   // Mutable copy of counts so we can track assignments made during this run
@@ -149,6 +171,11 @@ export function runSchedule(input: ScheduleInput): ScheduleResult {
 
       // Try all matching dates in the cycle (not just week 1)
       for (const date of dates) {
+        // Skip blocked dates (school-specific or global)
+        const schoolId = workshopSchoolIds.get(ws.id)
+        if (schoolId && blockedDates.has(`${schoolId}:${date}`)) continue
+        if (blockedDates.has(`*:${date}`)) continue
+
         const excluded = conflictingPAs(
           bookedPerDate.get(date) ?? [],
           meeting.startMinute,
@@ -179,9 +206,13 @@ export function runSchedule(input: ScheduleInput): ScheduleResult {
 
     const { meeting, date, available } = best
 
-    // Sort candidates: quota deficit first, then shorter commute
+    // Sort candidates: quota deficit first, then shorter commute, then school affinity
     let sorted = sortByQuotaDeficit(available, counts, quotas)
     sorted = sortByCommute(sorted, paCommunities, schoolCommunity)
+    const schoolId = workshopSchoolIds.get(ws.id)
+    if (schoolId) {
+      sorted = sortByAffinity(sorted, schoolId, paSchoolHistory)
+    }
 
     // Assign up to maxPAs
     const assigned = sorted.slice(0, ws.maxPAs)

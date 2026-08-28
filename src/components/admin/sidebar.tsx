@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { School, Users, BookOpen, Calendar, LayoutDashboard, LogOut, Sparkles } from 'lucide-react'
+import { School, Users, BookOpen, Calendar, LayoutDashboard, LogOut, Sparkles, CalendarOff, BarChart3 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
@@ -12,6 +12,8 @@ const NAV_ITEMS = [
   { href: '/admin/teachers', label: 'Teachers', icon: Users },
   { href: '/admin/classes', label: 'Classes', icon: BookOpen },
   { href: '/admin/cycles', label: 'Rounds', icon: Calendar },
+  { href: '/admin/blocked-dates', label: 'Blocked dates', icon: CalendarOff },
+  { href: '/admin/heatmap', label: 'PA heatmap', icon: BarChart3 },
   { href: '/admin/schedule', label: 'Schedule & review', icon: Sparkles },
 ] as const
 

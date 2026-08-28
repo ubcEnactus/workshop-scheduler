@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Play, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Settings } from 'lucide-react'
 
 import { StatusBadge } from '@/components/admin/status-badge'
+import { AssignmentModal } from '@/components/admin/assignment-modal'
 
 interface WorkshopData {
   id: string
@@ -115,6 +116,7 @@ export function ScheduleReviewClient({
       : null
   )
   const [isPending, startTransition] = useTransition()
+  const [adjustingWorkshop, setAdjustingWorkshop] = useState<WorkshopData | null>(null)
 
   function handleRunScheduler() {
     setStep('running')
@@ -397,7 +399,10 @@ export function ScheduleReviewClient({
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            <button className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700">
+                            <button
+                              onClick={() => setAdjustingWorkshop(ws)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+                            >
                               <Settings className="size-3" />
                               Adjust
                             </button>
@@ -460,7 +465,10 @@ export function ScheduleReviewClient({
                         </td>
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-2">
-                            <button className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700">
+                            <button
+                              onClick={() => setAdjustingWorkshop(ws)}
+                              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700"
+                            >
                               <Settings className="size-3" />
                               Adjust
                             </button>
@@ -519,6 +527,15 @@ export function ScheduleReviewClient({
             </button>
           </div>
         </div>
+      )}
+
+      {adjustingWorkshop && (
+        <AssignmentModal
+          workshopId={adjustingWorkshop.id}
+          workshopName={`${adjustingWorkshop.className} · ${adjustingWorkshop.schoolName}`}
+          assignments={adjustingWorkshop.assignments}
+          onClose={() => setAdjustingWorkshop(null)}
+        />
       )}
     </div>
   )
