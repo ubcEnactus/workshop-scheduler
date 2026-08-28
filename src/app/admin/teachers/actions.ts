@@ -39,6 +39,7 @@ export async function createTeacher(formData: FormData) {
     throw err
   }
   revalidatePath('/admin/teachers')
+  redirect('/admin/teachers')
 }
 
 export async function updateTeacher(formData: FormData) {
@@ -61,7 +62,7 @@ export async function updateTeacher(formData: FormData) {
 
   try {
     await prisma.user.update({
-      where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
+      where: { id: id.data.id, role: 'TEACHER' },
       data: {
         name: parsed.data.name,
         email: parsed.data.email,
@@ -86,6 +87,19 @@ export async function softDeleteTeacher(formData: FormData) {
   await prisma.user.update({
     where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
     data: { deletedAt: new Date() },
+  })
+  revalidatePath('/admin/teachers')
+}
+
+export async function reactivateTeacher(formData: FormData) {
+  await requireRole('ADMIN')
+  const id = teacherIdSchema.safeParse({ id: formData.get('id') })
+  if (!id.success) {
+    redirect('/admin/teachers?error=Unknown+teacher.')
+  }
+  await prisma.user.update({
+    where: { id: id.data.id, role: 'TEACHER' },
+    data: { deletedAt: null },
   })
   revalidatePath('/admin/teachers')
 }

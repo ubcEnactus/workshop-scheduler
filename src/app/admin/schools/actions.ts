@@ -11,12 +11,20 @@ export async function createSchool(formData: FormData) {
   const parsed = schoolSchema.safeParse({
     name: formData.get('name'),
     district: formData.get('district'),
+    community: formData.get('community') ?? '',
   })
   if (!parsed.success) {
     redirect(`/admin/schools?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
-  await prisma.school.create({ data: parsed.data })
+  await prisma.school.create({
+    data: {
+      name: parsed.data.name,
+      district: parsed.data.district,
+      community: parsed.data.community,
+    },
+  })
   revalidatePath('/admin/schools')
+  redirect('/admin/schools')
 }
 
 export async function updateSchool(formData: FormData) {
@@ -29,6 +37,7 @@ export async function updateSchool(formData: FormData) {
   const parsed = schoolSchema.safeParse({
     name: formData.get('name'),
     district: formData.get('district'),
+    community: formData.get('community') ?? '',
   })
   if (!parsed.success) {
     redirect(
@@ -36,7 +45,14 @@ export async function updateSchool(formData: FormData) {
     )
   }
 
-  await prisma.school.update({ where: { id: id.data.id, deletedAt: null }, data: parsed.data })
+  await prisma.school.update({
+    where: { id: id.data.id },
+    data: {
+      name: parsed.data.name,
+      district: parsed.data.district,
+      community: parsed.data.community,
+    },
+  })
   redirect('/admin/schools')
 }
 
@@ -49,6 +65,19 @@ export async function softDeleteSchool(formData: FormData) {
   await prisma.school.update({
     where: { id: id.data.id, deletedAt: null },
     data: { deletedAt: new Date() },
+  })
+  revalidatePath('/admin/schools')
+}
+
+export async function reactivateSchool(formData: FormData) {
+  await requireRole('ADMIN')
+  const id = schoolIdSchema.safeParse({ id: formData.get('id') })
+  if (!id.success) {
+    redirect('/admin/schools?error=Unknown+school.')
+  }
+  await prisma.school.update({
+    where: { id: id.data.id },
+    data: { deletedAt: null },
   })
   revalidatePath('/admin/schools')
 }

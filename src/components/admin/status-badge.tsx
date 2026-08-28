@@ -1,6 +1,16 @@
 import { cn } from '@/lib/utils'
 
-type StatusVariant = 'scheduled' | 'pending' | 'draft' | 'open' | 'closed' | 'confirmed' | 'cancelled'
+type StatusVariant =
+  | 'scheduled'
+  | 'pending'
+  | 'draft'
+  | 'open'
+  | 'closed'
+  | 'confirmed'
+  | 'cancelled'
+  | 'active'
+  | 'deactivated'
+  | 'unscheduled'
 
 const variantStyles: Record<StatusVariant, string> = {
   scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -10,20 +20,24 @@ const variantStyles: Record<StatusVariant, string> = {
   closed: 'bg-red-50 text-red-600 border-red-200',
   confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
+  active: 'bg-green-50 text-green-700 border-green-200',
+  deactivated: 'bg-red-50 text-red-500 border-red-200',
+  unscheduled: 'bg-amber-50 text-amber-600 border-amber-200',
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const variant = status.toLowerCase() as StatusVariant
   const styles = variantStyles[variant] ?? variantStyles.draft
+  const displayLabel = label ?? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase()
 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize',
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
         styles
       )}
     >
-      {status.toLowerCase()}
+      {displayLabel}
     </span>
   )
 }

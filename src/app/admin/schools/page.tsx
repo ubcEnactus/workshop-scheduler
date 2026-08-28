@@ -1,80 +1,124 @@
+import Link from 'next/link'
+import { Pencil, EyeOff } from 'lucide-react'
+
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { FormError } from '@/components/form-error'
-import { createSchool, softDeleteSchool } from './actions'
+import { StatusBadge } from '@/components/admin/status-badge'
+import { softDeleteSchool, reactivateSchool } from './actions'
 
-export default async function SchoolsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ error?: string }>
-}) {
+export default async function SchoolsPage() {
   await requireRole('ADMIN')
-  const { error } = await searchParams
 
   const schools = await prisma.school.findMany({
-    where: { deletedAt: null },
     orderBy: { name: 'asc' },
+    include: {
+      _count: { select: { teachers: true, classSections: true } },
+    },
   })
 
-  return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Schools</h1>
+  const active = schools.filter((s) => !s.deletedAt)
+  const deactivated = schools.filter((s) => s.deletedAt)
 
-      <div className="mt-6">
-        <FormError message={error} />
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Schools</h1>
+          <p className="text-sm text-gray-500">
+            Manage partner schools. Deactivating hides a school without deleting its history.
+          </p>
+        </div>
+        <Link
+          href="/admin/schools/new"
+          className="rounded-lg bg-[#1e2a4a] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2a3a5e]"
+        >
+          + Add school
+        </Link>
       </div>
 
-      <form action={createSchool} className="mt-8 space-y-4">
-        <h2 className="text-lg font-medium">Add school</h2>
-        <div>
-          <label className="block text-sm font-medium">Name</label>
-          <input
-            name="name"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            {active.length} active · {deactivated.length} deactivated
+          </p>
         </div>
-        <div>
-          <label className="block text-sm font-medium">District</label>
-          <input
-            name="district"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
-        >
-          Add school
-        </button>
-      </form>
 
-      <ul className="mt-12 divide-y">
-        {schools.length === 0 && <li className="py-4 text-sm text-zinc-500">No schools yet.</li>}
-        {schools.map((school) => (
-          <li key={school.id} className="flex items-center justify-between py-3">
-            <div>
-              <p className="font-medium">{school.name}</p>
-              <p className="text-sm text-zinc-500">{school.district}</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <a
-                href={`/admin/schools/${school.id}/edit`}
-                className="text-sm text-zinc-600 hover:underline"
-              >
-                Edit
-              </a>
-              <form action={softDeleteSchool}>
-                <input type="hidden" name="id" value={school.id} />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
-                  Delete
-                </button>
-              </form>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </main>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-gray-100 text-left text-xs font-medium tracking-wide text-gray-500 uppercase">
+              <th className="pb-3 pr-4">School</th>
+              <th className="pb-3 pr-4">District</th>
+              <th className="pb-3 pr-4">Teachers</th>
+              <th className="pb-3 pr-4">Classes</th>
+              <th className="pb-3 pr-4">Status</th>
+              <th className="pb-3"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {schools.length === 0 && (
+              <tr>
+                <td colSpan={6} className="py-8 text-center text-sm text-gray-400">
+                  No schools yet. Add your first school to get started.
+                </td>
+              </tr>
+            )}
+            {schools.map((school) => (
+              <tr key={school.id} className="text-sm">
+                <td className="py-4 pr-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-red-50 text-red-500">
+                      <svg className="size-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900">{school.name}</p>
+                      <p className="text-xs text-gray-400">S-{school.id.slice(-3)}</p>
+                    </div>
+                  </div>
+                </td>
+                <td className="py-4 pr-4 text-gray-600">{school.district}</td>
+                <td className="py-4 pr-4 text-gray-600">{school._count.teachers}</td>
+                <td className="py-4 pr-4 text-gray-600">{school._count.classSections}</td>
+                <td className="py-4 pr-4">
+                  <StatusBadge status={school.deletedAt ? 'deactivated' : 'active'} />
+                </td>
+                <td className="py-4">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/admin/schools/${school.id}/edit`}
+                      className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                    >
+                      <Pencil className="size-4" />
+                    </Link>
+                    {school.deletedAt ? (
+                      <form action={reactivateSchool}>
+                        <input type="hidden" name="id" value={school.id} />
+                        <button
+                          type="submit"
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          Reactivate
+                        </button>
+                      </form>
+                    ) : (
+                      <form action={softDeleteSchool}>
+                        <input type="hidden" name="id" value={school.id} />
+                        <button
+                          type="submit"
+                          className="rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                        >
+                          <EyeOff className="size-4" />
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }

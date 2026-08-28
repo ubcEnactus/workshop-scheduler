@@ -21,6 +21,7 @@ export async function createCycle(formData: FormData) {
 
   await prisma.cycle.create({ data: { ...parsed.data, status: 'DRAFT' } })
   revalidatePath('/admin/cycles')
+  redirect('/admin/cycles')
 }
 
 export async function openCycle(formData: FormData) {
