@@ -1,99 +1,145 @@
-import Link from 'next/link'
+import { Calendar, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
 
-import { requireRole, signOut } from '@/lib/auth'
+import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstant, formatInstantRange } from '@/lib/time'
+import { formatInstant } from '@/lib/time'
+import { StatusBadge } from '@/components/admin/status-badge'
 
-function workshopTime(start: Date | null, end: Date | null): string {
-  if (start && end) return formatInstantRange(start, end)
-  if (start) return formatInstant(start)
-  return 'Not scheduled yet'
-}
-
-export default async function TeacherHome() {
+export default async function TeacherDashboard() {
   const user = await requireRole('TEACHER')
 
-  async function logout() {
-    'use server'
-    await signOut({ redirectTo: '/login' })
-  }
+  const [workshops, availabilityCount] = await Promise.all([
+    user.schoolId
+      ? prisma.workshop.findMany({
+          where: {
+            classSection: { schoolId: user.schoolId, school: { deletedAt: null } },
+          },
+          include: {
+            classSection: { select: { name: true, grade: true, subject: true } },
+            cycle: { select: { name: true, status: true } },
+          },
+          orderBy: [{ scheduledStart: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+        })
+      : Promise.resolve([]),
+    prisma.availability.count({ where: { userId: user.id } }),
+  ])
 
-  const workshops = user.schoolId
-    ? await prisma.workshop.findMany({
-        where: { classSection: { schoolId: user.schoolId, school: { deletedAt: null } } },
-        include: {
-          classSection: { select: { name: true, teacher: { select: { name: true } } } },
-          cycle: { select: { name: true } },
-        },
-        orderBy: [{ scheduledStart: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
-      })
-    : []
+  const thisMonth = workshops.filter((w) => {
+    if (!w.scheduledStart) return false
+    const now = new Date()
+    return (
+      w.scheduledStart.getMonth() === now.getMonth() &&
+      w.scheduledStart.getFullYear() === now.getFullYear()
+    )
+  })
 
-  const availabilityCount = await prisma.availability.count({ where: { userId: user.id } })
+  const completed = workshops.filter((w) => w.status === 'COMPLETED')
+  const upcoming = workshops.filter(
+    (w) => w.scheduledStart && w.scheduledStart > new Date() && w.status !== 'CANCELLED'
+  )
+
+  // Find workshops needing attention (unconfirmed dates)
+  const needsAttention = workshops.find(
+    (w) => w.status === 'SCHEDULED' && w.scheduledStart
+  )
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Hello {user.name ?? user.email}</h1>
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">My workshops</h1>
+        <p className="text-sm text-gray-500">Sessions booked for your classes.</p>
+      </div>
 
-      <section className="mt-8">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-medium">Weekly availability</h2>
-          <Link
-            href="/teacher/availability"
-            className="text-sm font-medium text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
-            {availabilityCount > 0 ? 'Edit availability' : 'Set your availability'}
-          </Link>
+      {/* Action required banner */}
+      {needsAttention && (
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-8 items-center justify-center rounded-full bg-amber-100">
+              <AlertCircle className="size-4 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Action required</p>
+              <p className="text-xs text-amber-700">
+                Confirm the date for {needsAttention.classSection.name}.
+              </p>
+            </div>
+          </div>
+          <button className="rounded-lg bg-[#1e2a4a] px-4 py-2 text-xs font-medium text-white hover:bg-[#2a3a5e]">
+            Confirm date
+          </button>
         </div>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          {availabilityCount > 0
-            ? `You've marked ${availabilityCount} slot${availabilityCount === 1 ? '' : 's'}.`
-            : "You haven't submitted availability yet."}
-        </p>
-      </section>
+      )}
 
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Workshops at your school</h2>
-        {!user.schoolId ? (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Your account isn&apos;t linked to a school yet — ask an admin to set one.
-          </p>
-        ) : workshops.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            No workshops requested this cycle yet.
+      {/* Stats */}
+      <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex size-10 items-center justify-center rounded-full bg-blue-100">
+            <Calendar className="size-5 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">This month</p>
+            <p className="text-xl font-bold text-gray-900">{thisMonth.length}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex size-10 items-center justify-center rounded-full bg-green-100">
+            <CheckCircle2 className="size-5 text-green-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">Completed</p>
+            <p className="text-xl font-bold text-gray-900">{completed.length}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex size-10 items-center justify-center rounded-full bg-amber-100">
+            <Clock className="size-5 text-amber-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">Availability</p>
+            <p className="text-xl font-bold text-gray-900">{availabilityCount} slots</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex size-10 items-center justify-center rounded-full bg-purple-100">
+            <Calendar className="size-5 text-purple-600" />
+          </div>
+          <div>
+            <p className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">Upcoming</p>
+            <p className="text-xl font-bold text-gray-900">{upcoming.length}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Upcoming sessions */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Upcoming sessions</h2>
+
+        {upcoming.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-400">
+            No upcoming sessions scheduled.
           </p>
         ) : (
-          <ul className="mt-3 space-y-3">
-            {workshops.map((w) => (
-              <li
-                key={w.id}
-                className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-              >
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="font-medium">{w.classSection.name}</p>
-                  <span className="text-xs text-zinc-500">{w.status}</span>
+          <div className="divide-y divide-gray-100">
+            {upcoming.map((ws) => (
+              <div key={ws.id} className="flex items-center justify-between py-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-amber-50">
+                    <Calendar className="size-4 text-amber-500" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">{ws.classSection.name}</p>
+                    <p className="text-xs text-gray-400">
+                      <Clock className="mr-1 inline size-3" />
+                      {ws.scheduledStart ? formatInstant(ws.scheduledStart) : 'TBD'}
+                    </p>
+                  </div>
                 </div>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {w.cycle.name}
-                  {w.classSection.teacher?.name ? ` · ${w.classSection.teacher.name}` : ''}
-                </p>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {workshopTime(w.scheduledStart, w.scheduledEnd)}
-                </p>
-              </li>
+                <StatusBadge status={ws.status} />
+              </div>
             ))}
-          </ul>
+          </div>
         )}
-      </section>
-
-      <form action={logout} className="mt-10">
-        <button
-          type="submit"
-          className="text-xs font-medium text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-        >
-          Sign out
-        </button>
-      </form>
-    </main>
+      </div>
+    </div>
   )
 }
