@@ -73,7 +73,6 @@ export default async function SchoolsPage() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-900">{school.name}</p>
-                      <p className="text-xs text-gray-400">S-{school.id.slice(-3)}</p>
                     </div>
                   </div>
                 </td>

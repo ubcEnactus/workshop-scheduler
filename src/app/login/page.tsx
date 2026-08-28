@@ -97,7 +97,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="admin@workshop.org"
+                placeholder="user@workshop.org"
                 className="mt-1.5 block w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#1e2a4a] focus:ring-1 focus:ring-[#1e2a4a] focus:outline-none"
               />
             </div>
@@ -133,7 +133,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1e2a4a] px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-[#2a3a5e]"
             >
               <LogIn className="size-4" />
-              Sign in as Admin
+              Sign In
             </button>
           </form>
         </div>
