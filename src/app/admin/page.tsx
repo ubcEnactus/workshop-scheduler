@@ -5,7 +5,7 @@ import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { formatInstant } from '@/lib/time'
 import { StatCard } from '@/components/admin/stat-card'
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default async function AdminDashboard() {
   await requireRole('ADMIN')

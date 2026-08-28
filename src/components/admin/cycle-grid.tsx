@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Calendar } from 'lucide-react'
 
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { OpenRoundModal, RoundOpenedModal } from '@/components/admin/modals'
 
 interface CycleData {

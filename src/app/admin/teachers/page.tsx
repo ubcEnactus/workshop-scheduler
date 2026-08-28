@@ -3,7 +3,7 @@ import { Pencil, EyeOff } from 'lucide-react'
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { softDeleteTeacher, reactivateTeacher } from './actions'
 
 function getInitials(name: string | null, email: string): string {

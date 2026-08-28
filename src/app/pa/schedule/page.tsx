@@ -2,10 +2,9 @@ import { Calendar, CheckCircle2, Clock, AlertCircle, MapPin, School } from 'luci
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstant, VANCOUVER_TZ } from '@/lib/time'
-import { StatusBadge } from '@/components/admin/status-badge'
-
-const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
+import { formatInstant, formatClockTime, DAY_LABELS_SHORT } from '@/lib/time'
+import { getCurrentWeekDates, formatMonthDay, isSameLocalDay } from '@/lib/week-grid'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 const DAY_COLORS = [
   { header: 'bg-[#1e2a4a] text-white', border: 'border-[#1e2a4a]' },
@@ -14,35 +13,6 @@ const DAY_COLORS = [
   { header: 'bg-green-500 text-white', border: 'border-green-500' },
   { header: 'bg-purple-500 text-white', border: 'border-purple-500' },
 ]
-
-function getWeekDates(): { dates: Date[]; label: string } {
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-
-  const dates = Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
-  })
-
-  const fmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-  const label = `Week of ${fmt.format(monday)} · This week`
-  return { dates, label }
-}
-
-function formatShortDate(d: Date): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d)
-}
-
-function formatTime(d: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: VANCOUVER_TZ,
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d)
-}
 
 export default async function PASchedulePage() {
   const user = await requireRole('PA')
@@ -59,31 +29,21 @@ export default async function PASchedulePage() {
     orderBy: { workshop: { scheduledStart: { sort: 'asc', nulls: 'last' } } },
   })
 
-  const { dates, label } = getWeekDates()
+  const { dates, label } = getCurrentWeekDates()
   const now = new Date()
 
   // Group assignments by day of week for the current week
   const weekAssignments = assignments.filter((a) => {
     if (!a.workshop.scheduledStart) return false
     const ws = a.workshop.scheduledStart
-    return dates.some(
-      (d) =>
-        d.getFullYear() === ws.getFullYear() &&
-        d.getMonth() === ws.getMonth() &&
-        d.getDate() === ws.getDate()
-    )
+    return dates.some((d) => isSameLocalDay(d, ws))
   })
 
   const byDay: Map<number, typeof weekAssignments> = new Map()
   for (const a of weekAssignments) {
     if (!a.workshop.scheduledStart) continue
     const wsDate = a.workshop.scheduledStart
-    const dayIdx = dates.findIndex(
-      (d) =>
-        d.getFullYear() === wsDate.getFullYear() &&
-        d.getMonth() === wsDate.getMonth() &&
-        d.getDate() === wsDate.getDate()
-    )
+    const dayIdx = dates.findIndex((d) => isSameLocalDay(d, wsDate))
     if (dayIdx === -1) continue
     const existing = byDay.get(dayIdx) ?? []
     existing.push(a)
@@ -155,8 +115,8 @@ export default async function PASchedulePage() {
           return (
             <div key={dayIdx} className={`rounded-xl border ${color.border} bg-white overflow-hidden`}>
               <div className={`px-3 py-2 ${color.header}`}>
-                <p className="text-xs font-bold uppercase">{DAY_SHORT[dayIdx]}</p>
-                <p className="text-sm font-semibold">{formatShortDate(date)}</p>
+                <p className="text-xs font-bold uppercase">{DAY_LABELS_SHORT[dayIdx]}</p>
+                <p className="text-sm font-semibold">{formatMonthDay(date)}</p>
               </div>
               <div className="min-h-[120px] p-2">
                 {dayAssignments.length === 0 ? (
@@ -167,7 +127,7 @@ export default async function PASchedulePage() {
                       <div key={a.id} className="rounded-lg border border-gray-100 p-2">
                         <div className="flex items-start justify-between">
                           <p className="text-[10px] font-medium text-gray-500">
-                            {a.workshop.scheduledStart ? formatTime(a.workshop.scheduledStart) : ''}
+                            {a.workshop.scheduledStart ? formatClockTime(a.workshop.scheduledStart) : ''}
                           </p>
                           <StatusBadge status={a.status === 'CONFIRMED' ? 'confirmed' : 'pending'} />
                         </div>

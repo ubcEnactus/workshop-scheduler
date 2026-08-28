@@ -3,7 +3,7 @@ import { Pencil, Clock } from 'lucide-react'
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatSlotRange } from '@/lib/time'
+import { formatSlotRange, DAY_LABELS_SHORT } from '@/lib/time'
 
 const DAY_COLORS = [
   'bg-red-50 text-red-600 border-red-200',
@@ -12,8 +12,6 @@ const DAY_COLORS = [
   'bg-blue-50 text-blue-600 border-blue-200',
   'bg-purple-50 text-purple-600 border-purple-200',
 ]
-
-const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
 function getTimeOfDay(startMinute: number): string {
   if (startMinute < 720) return 'Morning'
@@ -86,7 +84,7 @@ export default async function ClassesPage() {
                           key={m.id}
                           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${DAY_COLORS[m.dayOfWeek]}`}
                         >
-                          {DAY_SHORT[m.dayOfWeek]}
+                          {DAY_LABELS_SHORT[m.dayOfWeek]}
                           <Clock className="size-3 opacity-60" />
                           {formatSlotRange(m.startMinute, m.endMinute - m.startMinute)}
                         </span>
@@ -127,7 +125,7 @@ export default async function ClassesPage() {
               )
               return (
                 <div key={day} className={`rounded-xl border p-3 ${DAY_COLORS[day]}`}>
-                  <p className="mb-2 text-xs font-bold">{DAY_SHORT[day]}</p>
+                  <p className="mb-2 text-xs font-bold">{DAY_LABELS_SHORT[day]}</p>
                   {dayMeetings.length === 0 ? (
                     <p className="text-xs opacity-50">No classes</p>
                   ) : (

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { DAY_LABELS_SHORT } from '@/lib/time'
 import { getSlotDetailsAction } from './actions'
 
 interface HeatmapCell {
@@ -22,8 +23,6 @@ interface HeatmapClientProps {
   slotLabels: string[]
   schoolCommunity: string | null
 }
-
-const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 
 function getCellColor(count: number, maxCount: number): string {
   if (count === 0) return 'bg-gray-100'
@@ -69,7 +68,7 @@ export function HeatmapClient({ cells, slotStarts, slotLabels, schoolCommunity }
             <thead>
               <tr>
                 <th className="w-16 py-2 text-left text-xs font-medium text-gray-400" />
-                {DAY_LABELS.map((day) => (
+                {DAY_LABELS_SHORT.map((day) => (
                   <th key={day} className="w-1/5 py-2 text-center text-xs font-semibold text-gray-700">
                     {day}
                   </th>
@@ -116,7 +115,7 @@ export function HeatmapClient({ cells, slotStarts, slotLabels, schoolCommunity }
         {selectedSlot && !isPending && (
           <div>
             <p className="mb-3 text-xs font-medium text-gray-500">
-              {DAY_LABELS[selectedSlot.day]} at {slotLabels[slotStarts.indexOf(selectedSlot.startMin)]}
+              {DAY_LABELS_SHORT[selectedSlot.day]} at {slotLabels[slotStarts.indexOf(selectedSlot.startMin)]}
               {' \u2014 '}{slotPAs.length} PA{slotPAs.length !== 1 ? 's' : ''} available
             </p>
             {slotPAs.length === 0 ? (

@@ -1,80 +1,140 @@
-import { Button } from '@/components/ui/button'
+import type { ReactNode } from 'react'
+
 import { SLOT_STARTS } from '@/lib/schemas/availability'
-import { DAY_LABELS, formatSlotRange } from '@/lib/time'
+import { DAY_LABELS, DAY_LABELS_SHORT, formatSlotRange } from '@/lib/time'
 
 type AvailabilityGridProps = {
   /** Keys of already-saved slots, as `${dayOfWeek}-${startMin}`. */
   checked: ReadonlySet<string>
   action: (formData: FormData) => Promise<void>
+  /** Card heading, e.g. "Weekly availability". */
+  title: string
+  /** Caption under the heading. */
+  subtitle: string
+  /** One-line instruction above the grid. */
+  helpText: string
   saved?: boolean
   error?: boolean
+  /** Extra legend swatches appended after the standard Available/Not set pair. */
+  legendExtra?: ReactNode
 }
 
 /**
- * Weekly availability checkbox grid (Mon–Fri × 30-min school-hour slots).
- * Plain HTML form posting to the role's `saveAvailability` action — only
- * checked boxes are submitted, so saving replaces the whole set.
+ * Weekly availability picker (Mon–Fri x 30-minute school-hour slots), shared by
+ * the PA and Teacher availability pages.
+ *
+ * Plain HTML form posting to the role's own `saveAvailability` Server Action.
+ * Only checked boxes are submitted, so saving replaces the whole set — see
+ * `replaceAvailability` in `lib/availability.ts`.
  */
-export function AvailabilityGrid({ checked, action, saved, error }: AvailabilityGridProps) {
+export function AvailabilityGrid({
+  checked,
+  action,
+  title,
+  subtitle,
+  helpText,
+  saved,
+  error,
+  legendExtra,
+}: AvailabilityGridProps) {
   return (
     <form action={action}>
-      {saved ? (
-        <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-          Availability saved.
-        </div>
-      ) : null}
-      {error ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          Couldn&apos;t save availability — the submission was invalid. Try again.
-        </div>
-      ) : null}
-
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-zinc-200 dark:border-zinc-800">
-              <th className="px-3 py-2 text-left font-medium text-zinc-500 dark:text-zinc-400">
-                Time
-              </th>
-              {DAY_LABELS.map((day) => (
-                <th key={day} className="px-3 py-2 text-center font-medium">
-                  {day}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {SLOT_STARTS.map((startMin) => (
-              <tr
-                key={startMin}
-                className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800/60"
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+            <p className="text-xs text-gray-400">{subtitle}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {saved && (
+              <span
+                role="status"
+                className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700"
               >
-                <td className="px-3 py-1.5 whitespace-nowrap text-zinc-600 dark:text-zinc-400">
-                  {formatSlotRange(startMin)}
-                </td>
-                {DAY_LABELS.map((day, dayOfWeek) => (
-                  <td key={day} className="px-3 py-1.5 text-center">
-                    <input
-                      type="checkbox"
-                      name="slots"
-                      value={`${dayOfWeek}-${startMin}`}
-                      defaultChecked={checked.has(`${dayOfWeek}-${startMin}`)}
-                      aria-label={`${day} ${formatSlotRange(startMin)}`}
-                      className="size-4 accent-zinc-900 dark:accent-zinc-100"
-                    />
-                  </td>
+                Saved
+              </span>
+            )}
+            <span className="text-xs text-gray-400">{checked.size} slots selected</span>
+          </div>
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700"
+          >
+            Couldn&apos;t save — try again.
+          </div>
+        )}
+
+        <div className="mb-3 flex items-center gap-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <span className="size-3 rounded bg-green-400" /> Available
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-3 rounded bg-gray-200" /> Not set
+          </span>
+          {legendExtra}
+        </div>
+
+        <p className="mb-3 text-xs text-gray-400">{helpText}</p>
+
+        <div className="overflow-x-auto">
+          <table className="w-full table-fixed border-collapse">
+            <thead>
+              <tr>
+                <th className="w-16 py-2 text-left text-xs font-medium text-gray-400" />
+                {DAY_LABELS_SHORT.map((day) => (
+                  <th
+                    key={day}
+                    className="w-1/5 py-2 text-center text-xs font-semibold text-gray-700"
+                  >
+                    {day}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {SLOT_STARTS.map((startMin) => (
+                <tr key={startMin}>
+                  <td className="py-0.5 pr-2 text-right text-[11px] text-gray-400 tabular-nums">
+                    {formatSlotRange(startMin).split('–')[0].trim()}
+                  </td>
+                  {DAY_LABELS.map((dayLabel, dayOfWeek) => {
+                    const key = `${dayOfWeek}-${startMin}`
+                    return (
+                      <td key={key} className="px-0.5 py-0.5">
+                        <label className="block cursor-pointer">
+                          <input
+                            type="checkbox"
+                            name="slots"
+                            value={key}
+                            defaultChecked={checked.has(key)}
+                            aria-label={`${dayLabel} ${formatSlotRange(startMin)}`}
+                            className="peer sr-only"
+                          />
+                          <div className="h-7 rounded bg-gray-100 transition-colors hover:bg-gray-200 peer-checked:bg-green-400 peer-checked:hover:bg-green-500 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500" />
+                        </label>
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      <div className="mt-4 flex items-center gap-4">
-        <Button type="submit">Save availability</Button>
-        <p className="text-xs text-zinc-500">
-          Only checked slots are kept — unchecking everything clears your availability.
-        </p>
+        <div className="mt-4 flex items-center justify-end gap-3">
+          <button type="reset" className="text-sm font-medium text-gray-500 hover:text-gray-700">
+            Clear all
+          </button>
+          <button
+            type="submit"
+            className="rounded-lg bg-[#1e2a4a] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#2a3a5e]"
+          >
+            Save availability
+          </button>
+        </div>
       </div>
     </form>
   )

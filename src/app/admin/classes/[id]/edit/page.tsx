@@ -2,9 +2,8 @@ import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
 import { FormError } from '@/components/form-error'
+import { DAY_LABELS } from '@/lib/time'
 import { updateClassSection, addMeeting, deleteMeeting } from '../../actions'
-
-const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
 
 function minutesToTime(minutes: number): string {
   const h = Math.floor(minutes / 60)

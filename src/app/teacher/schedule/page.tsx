@@ -2,10 +2,10 @@ import { Clock, Calendar } from 'lucide-react'
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstant, DAY_LABELS, formatMinuteOfDay, VANCOUVER_TZ } from '@/lib/time'
-import { StatusBadge } from '@/components/admin/status-badge'
+import { formatInstant, DAY_LABELS_SHORT, VANCOUVER_TZ } from '@/lib/time'
+import { getCurrentWeekDates, formatMonthDay } from '@/lib/week-grid'
+import { StatusBadge } from '@/components/ui/status-badge'
 
-const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']
 const HOUR_START = 8
 const HOUR_END = 16
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
@@ -21,27 +21,6 @@ const BLOCK_COLORS = [
 
 function getBlockColor(index: number) {
   return BLOCK_COLORS[index % BLOCK_COLORS.length]
-}
-
-function getWeekDates(): { dates: Date[]; label: string } {
-  const now = new Date()
-  const dayOfWeek = now.getDay()
-  const monday = new Date(now)
-  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-
-  const dates = Array.from({ length: 5 }, (_, i) => {
-    const d = new Date(monday)
-    d.setDate(monday.getDate() + i)
-    return d
-  })
-
-  const fmt = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
-  const label = `Week of ${fmt.format(monday)} · This week`
-  return { dates, label }
-}
-
-function formatDateShort(d: Date): string {
-  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(d)
 }
 
 export default async function TeacherSchedulePage() {
@@ -61,7 +40,7 @@ export default async function TeacherSchedulePage() {
       })
     : []
 
-  const { dates, label } = getWeekDates()
+  const { dates, label } = getCurrentWeekDates()
 
   // Map workshops to calendar blocks
   type CalendarBlock = {
@@ -145,9 +124,9 @@ export default async function TeacherSchedulePage() {
           {dates.map((d, i) => (
             <div key={i} className="border-b border-gray-100 pb-3 text-center">
               <p className="text-[10px] font-medium tracking-wide text-gray-400 uppercase">
-                {DAY_SHORT[i]}
+                {DAY_LABELS_SHORT[i]}
               </p>
-              <p className="text-sm font-semibold text-gray-900">{formatDateShort(d)}</p>
+              <p className="text-sm font-semibold text-gray-900">{formatMonthDay(d)}</p>
             </div>
           ))}
 

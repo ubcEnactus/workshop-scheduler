@@ -3,7 +3,7 @@ import { Calendar, CheckCircle2, Clock, School } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { formatInstant, VANCOUVER_TZ } from '@/lib/time'
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default async function PADashboard() {
   const user = await requireRole('PA')

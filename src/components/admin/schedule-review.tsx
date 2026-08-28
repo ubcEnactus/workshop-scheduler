@@ -4,7 +4,8 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { Play, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Settings } from 'lucide-react'
 
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { formatInstantShort } from '@/lib/time'
 import { AssignmentModal } from '@/components/admin/assignment-modal'
 
 interface WorkshopData {
@@ -89,14 +90,7 @@ function StepIndicator({ current }: { current: Step }) {
 }
 
 function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Vancouver',
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso))
+  return formatInstantShort(new Date(iso))
 }
 
 export function ScheduleReviewClient({

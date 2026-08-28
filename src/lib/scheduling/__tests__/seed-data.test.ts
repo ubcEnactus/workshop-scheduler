@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ClassMeeting, Cycle, Workshop } from '@prisma/client'
 
-import { runSchedule } from '../algorithm'
+import { runSchedule, ScheduleInput } from '../algorithm'
 import { coalesceAvailability } from '../availability'
 
 /**
@@ -65,16 +65,25 @@ const seededSlots = [
 let counter = 1
 const generateId = () => `seed-a-${counter++}`
 
+function makeInput(overrides: Partial<ScheduleInput> = {}): ScheduleInput {
+  return {
+    cycle,
+    classMeetings: meetings,
+    workshops,
+    assignments: [],
+    availabilities: coalesceAvailability(seededSlots),
+    paCommunities: new Map(),
+    workshopSchoolCommunities: new Map(),
+    assignmentCounts: new Map(),
+    quotas: new Map(),
+    generateId,
+    ...overrides,
+  }
+}
+
 describe('scheduling the seeded dataset', () => {
   it('places both workshops in their class meeting slots', () => {
-    const { workshops: result } = runSchedule(
-      cycle,
-      meetings,
-      workshops,
-      [],
-      coalesceAvailability(seededSlots),
-      generateId
-    )
+    const { workshops: result } = runSchedule(makeInput())
 
     const bio = result.find((w) => w.id === 'ws-bio')!
     expect(bio.status).toBe('SCHEDULED')
@@ -90,14 +99,7 @@ describe('scheduling the seeded dataset', () => {
   })
 
   it('assigns both PAs to Tuesday and only Priya to Wednesday', () => {
-    const { assignments } = runSchedule(
-      cycle,
-      meetings,
-      workshops,
-      [],
-      coalesceAvailability(seededSlots),
-      generateId
-    )
+    const { assignments } = runSchedule(makeInput())
 
     const bioPAs = assignments.filter((a) => a.workshopId === 'ws-bio').map((a) => a.paId)
     expect(bioPAs.sort()).toEqual(['pat', 'priya'])
@@ -113,14 +115,7 @@ describe('scheduling the seeded dataset', () => {
     // The Wednesday class needs two PAs, but only Priya is free then.
     const needsTwo = workshops.map((w) => (w.id === 'ws-math' ? { ...w, minPAs: 2 } : w))
 
-    const { workshops: result, assignments } = runSchedule(
-      cycle,
-      meetings,
-      needsTwo,
-      [],
-      coalesceAvailability(seededSlots),
-      generateId
-    )
+    const { workshops: result, assignments } = runSchedule(makeInput({ workshops: needsTwo }))
 
     const math = result.find((w) => w.id === 'ws-math')!
     expect(math.status).toBe('UNSCHEDULED')
@@ -135,14 +130,7 @@ describe('scheduling the seeded dataset', () => {
     // Regression: if either side shifted by a day, Tuesday availability would
     // stop covering the Tuesday class and nothing would schedule.
     const tuesdayOnly = coalesceAvailability(ticks(1, 570, 690, 'priya'))
-    const { workshops: result } = runSchedule(
-      cycle,
-      meetings,
-      workshops,
-      [],
-      tuesdayOnly,
-      generateId
-    )
+    const { workshops: result } = runSchedule(makeInput({ availabilities: tuesdayOnly }))
 
     expect(result.find((w) => w.id === 'ws-bio')!.status).toBe('SCHEDULED')
     expect(result.find((w) => w.id === 'ws-math')!.status).toBe('UNSCHEDULED')

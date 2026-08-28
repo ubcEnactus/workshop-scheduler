@@ -12,6 +12,9 @@ export const VANCOUVER_TZ = 'America/Vancouver'
 // Index matches `dayOfWeek` (0=Mon … 4=Fri, no weekends).
 export const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const
 
+/** Abbreviated form of `DAY_LABELS`, same 0=Mon … 4=Fri indexing. */
+export const DAY_LABELS_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'] as const
+
 // Intl.DateTimeFormat construction is expensive; build once per module load.
 const instantFormatter = new Intl.DateTimeFormat('en-US', {
   timeZone: VANCOUVER_TZ,
@@ -55,6 +58,31 @@ export function formatSlotRange(startMin: number, durationMin = 30): string {
 /** UTC instant → "Tue, Feb 3, 2026, 10:00 AM" (Vancouver wall clock). */
 export function formatInstant(d: Date): string {
   return instantFormatter.format(d)
+}
+
+const instantShortFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: VANCOUVER_TZ,
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
+/** UTC instant → "Tue, Feb 3, 10:00 AM" — `formatInstant` without the year. */
+export function formatInstantShort(d: Date): string {
+  return instantShortFormatter.format(d)
+}
+
+const clockFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: VANCOUVER_TZ,
+  hour: 'numeric',
+  minute: '2-digit',
+})
+
+/** UTC instant → "10:00 AM" (Vancouver wall clock). */
+export function formatClockTime(d: Date): string {
+  return clockFormatter.format(d)
 }
 
 /** "Tue, Feb 3, 2026, 10:00 – 11:00 AM" — shared parts collapsed by Intl. */

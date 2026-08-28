@@ -3,7 +3,7 @@ import { Pencil, EyeOff } from 'lucide-react'
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { StatusBadge } from '@/components/admin/status-badge'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { softDeleteSchool, reactivateSchool } from './actions'
 
 export default async function SchoolsPage() {

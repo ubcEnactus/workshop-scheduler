@@ -2,16 +2,8 @@ import { MapPin, Clock, Users, Camera, QrCode, ClipboardList, AlertTriangle, Che
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstant, VANCOUVER_TZ } from '@/lib/time'
-import { StatusBadge } from '@/components/admin/status-badge'
-
-function formatTime(d: Date): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: VANCOUVER_TZ,
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(d)
-}
+import { formatInstant, formatClockTime, VANCOUVER_TZ } from '@/lib/time'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 export default async function PACheckinPage() {
   const user = await requireRole('PA')
@@ -70,7 +62,7 @@ export default async function PACheckinPage() {
                 <span className="flex items-center gap-1">
                   <Clock className="size-3.5" />
                   {currentSession.workshop.scheduledStart
-                    ? `Today, ${formatTime(currentSession.workshop.scheduledStart)}`
+                    ? `Today, ${formatClockTime(currentSession.workshop.scheduledStart)}`
                     : 'TBD'}
                 </span>
                 <span className="flex items-center gap-1">

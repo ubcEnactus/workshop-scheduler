@@ -64,6 +64,38 @@ export async function createThing(formData: FormData) {
 }
 ```
 
+## Shared UI
+
+```
+src/components/
+  ui/         # cross-domain primitives (button, status-badge)
+  shell/      # role-shell.tsx + role-sidebar.tsx — the app chrome
+  admin|pa|teacher/   # domain-owned components
+  availability-grid.tsx   # shared by the PA + Teacher availability pages
+```
+
+- **The app shell is shared, the config is not.** All three role areas render
+  `RoleShell` (top bar + layout) and `RoleSidebar` (brand, nav, sign-out). Each
+  role's `sidebar.tsx` supplies its own `NAV_ITEMS`, so navigation stays
+  domain-owned. Don't fork the chrome to tweak one role — add a prop only if the
+  difference is real (today: `roleLabel`, `avatarClassName`).
+- **`lib/time.ts` owns all date/time formatting.** Don't build an
+  `Intl.DateTimeFormat` in a page — add a helper there. Everything it exports
+  renders in `America/Vancouver`. Reuse `DAY_LABELS` / `DAY_LABELS_SHORT`
+  instead of re-declaring weekday arrays.
+- **`lib/week-grid.ts` is deliberately server-local**, not Vancouver, because
+  the PA/Teacher schedule grids group workshops by local calendar day. Labels
+  and grouping agree with each other; making both Vancouver-correct is a
+  behavioural change and is still open.
+- **Intentionally duplicated:** the per-role `saveAvailability` actions
+  (`app/pa|teacher/availability/actions.ts`). The role and the three
+  redirect/revalidate paths *are* the whole body, and `requireRole` must stay
+  the visible first line of every Server Action.
+- **Intentionally not shared:** `DAY_COLORS` / `BLOCK_COLORS` palettes — they
+  encode different things per page and only look alike. The inline stat cards on
+  the availability pages use a different visual variant than `StatCard`;
+  unifying them would need a config matrix bigger than the markup.
+
 ## Common pitfalls
 
 - **Don't fetch data in `useEffect`.** Use Server Components.
