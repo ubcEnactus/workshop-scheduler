@@ -146,12 +146,12 @@ export default async function TeacherAvailabilityPage({
 
           {/* Grid */}
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
+            <table className="w-full table-fixed border-collapse">
               <thead>
                 <tr>
-                  <th className="w-20 py-2 text-left text-xs font-medium text-gray-400" />
+                  <th className="w-16 py-2 text-left text-xs font-medium text-gray-400" />
                   {DAY_SHORT.map((day) => (
-                    <th key={day} className="py-2 text-center text-xs font-semibold text-gray-700">
+                    <th key={day} className="w-1/5 py-2 text-center text-xs font-semibold text-gray-700">
                       {day}
                     </th>
                   ))}
@@ -176,7 +176,7 @@ export default async function TeacherAvailabilityPage({
                               defaultChecked={isChecked}
                               className="peer sr-only"
                             />
-                            <div className="h-7 w-full rounded peer-checked:bg-green-400 bg-gray-100 transition-colors hover:bg-gray-200 peer-checked:hover:bg-green-500" />
+                            <div className="h-7 rounded bg-gray-100 transition-colors hover:bg-gray-200 peer-checked:bg-green-400 peer-checked:hover:bg-green-500" />
                           </label>
                         </td>
                       )
