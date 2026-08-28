@@ -8,7 +8,14 @@ import { prisma } from '@/lib/db'
 import { runSchedule } from '@/lib/scheduling/algorithm'
 import { coalesceAvailability } from '@/lib/scheduling/availability'
 import { findOpenCycle } from '@/lib/scheduling/cycle'
-import { workshopIdSchema } from '@/lib/schemas/scheduling'
+import { getAssignmentCountsForCycle, getPAQuotas } from '@/lib/scheduling/quota'
+import { workshopIdSchema, assignPASchema } from '@/lib/schemas/scheduling'
+import {
+  assignPA,
+  unassignPA,
+  swapPA,
+  AssignmentError,
+} from '@/lib/scheduling/assignments'
 
 /**
  * Both actions operate on the single OPEN cycle rather than taking an id, so
@@ -29,28 +36,51 @@ export async function runScheduleAction(): Promise<
   const cycle = await findOpenCycle()
   if (!cycle) return { ok: false, error: 'No open cycle — open one from Cycles first.' }
 
-  const [classMeetings, workshops, assignments, slots] = await Promise.all([
-    prisma.classMeeting.findMany({
-      where: { classSection: { school: { deletedAt: null }, teacher: { deletedAt: null } } },
-    }),
-    prisma.workshop.findMany({ where: { cycleId: cycle.id } }),
-    prisma.assignment.findMany({ where: { workshop: { cycleId: cycle.id } } }),
-    // Only PAs staff workshops; teacher availability is recorded but unused here.
-    prisma.availability.findMany({
-      where: { user: { role: 'PA', deletedAt: null } },
-      select: { userId: true, dayOfWeek: true, startMin: true },
-      orderBy: [{ userId: 'asc' }, { dayOfWeek: 'asc' }, { startMin: 'asc' }],
-    }),
+  const [classMeetings, workshops, assignments, slots, paUsers, workshopDetails] =
+    await Promise.all([
+      prisma.classMeeting.findMany({
+        where: { classSection: { school: { deletedAt: null }, teacher: { deletedAt: null } } },
+      }),
+      prisma.workshop.findMany({ where: { cycleId: cycle.id } }),
+      prisma.assignment.findMany({ where: { workshop: { cycleId: cycle.id } } }),
+      prisma.availability.findMany({
+        where: { user: { role: 'PA', deletedAt: null } },
+        select: { userId: true, dayOfWeek: true, startMin: true },
+        orderBy: [{ userId: 'asc' }, { dayOfWeek: 'asc' }, { startMin: 'asc' }],
+      }),
+      prisma.user.findMany({
+        where: { role: 'PA', deletedAt: null },
+        select: { id: true, community: true },
+      }),
+      prisma.workshop.findMany({
+        where: { cycleId: cycle.id },
+        select: { id: true, classSection: { select: { school: { select: { community: true } } } } },
+      }),
+    ])
+
+  const paCommunities = new Map(paUsers.map((u) => [u.id, u.community]))
+  const workshopSchoolCommunities = new Map(
+    workshopDetails.map((w) => [w.id, w.classSection.school.community])
+  )
+
+  const paIds = paUsers.map((u) => u.id)
+  const [assignmentCounts, quotas] = await Promise.all([
+    getAssignmentCountsForCycle(paIds, cycle.id),
+    getPAQuotas(paIds),
   ])
 
-  const result = runSchedule(
+  const result = runSchedule({
     cycle,
     classMeetings,
     workshops,
     assignments,
-    coalesceAvailability(slots),
-    () => randomUUID()
-  )
+    availabilities: coalesceAvailability(slots),
+    paCommunities,
+    workshopSchoolCommunities,
+    assignmentCounts,
+    quotas,
+    generateId: () => randomUUID(),
+  })
 
   await prisma.$transaction(async (tx) => {
     // Proposals are regenerated wholesale; confirmed assignments are carried
@@ -156,5 +186,71 @@ export async function unconfirmWorkshopAction(workshopId: string): Promise<Actio
   revalidatePath('/admin/schedule')
   revalidatePath('/pa')
   revalidatePath('/teacher')
+  return { ok: true }
+}
+
+export async function assignPAAction(formData: FormData): Promise<ActionResult> {
+  await requireRole('ADMIN')
+
+  const parsed = assignPASchema.safeParse({
+    workshopId: formData.get('workshopId'),
+    paId: formData.get('paId'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' }
+
+  try {
+    await assignPA(parsed.data.workshopId, parsed.data.paId)
+  } catch (err) {
+    if (err instanceof AssignmentError) return { ok: false, error: err.message }
+    throw err
+  }
+
+  revalidatePath('/admin/schedule')
+  revalidatePath('/pa')
+  return { ok: true }
+}
+
+export async function unassignPAAction(formData: FormData): Promise<ActionResult> {
+  await requireRole('ADMIN')
+
+  const parsed = assignPASchema.safeParse({
+    workshopId: formData.get('workshopId'),
+    paId: formData.get('paId'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' }
+
+  try {
+    await unassignPA(parsed.data.workshopId, parsed.data.paId)
+  } catch (err) {
+    if (err instanceof AssignmentError) return { ok: false, error: err.message }
+    throw err
+  }
+
+  revalidatePath('/admin/schedule')
+  revalidatePath('/pa')
+  return { ok: true }
+}
+
+export async function swapPAAction(formData: FormData): Promise<ActionResult> {
+  await requireRole('ADMIN')
+
+  const parsed = assignPASchema.safeParse({
+    workshopId: formData.get('workshopId'),
+    paId: formData.get('paId'),
+  })
+  if (!parsed.success) return { ok: false, error: 'Invalid input.' }
+
+  const oldPaId = formData.get('oldPaId')
+  if (typeof oldPaId !== 'string' || !oldPaId) return { ok: false, error: 'Invalid input.' }
+
+  try {
+    await swapPA(parsed.data.workshopId, oldPaId, parsed.data.paId)
+  } catch (err) {
+    if (err instanceof AssignmentError) return { ok: false, error: err.message }
+    throw err
+  }
+
+  revalidatePath('/admin/schedule')
+  revalidatePath('/pa')
   return { ok: true }
 }

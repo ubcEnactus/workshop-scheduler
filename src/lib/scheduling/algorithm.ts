@@ -10,6 +10,9 @@ import {
   vancouverToUtc,
 } from '@/lib/time'
 
+import { canCommute, sortByCommute } from './commute'
+import { filterOverQuota, sortByQuotaDeficit } from './quota'
+
 /**
  * A contiguous window a PA is free, in local wall-clock minutes. Built from
  * ticked `Availability` slots by `coalesceAvailability`.
@@ -19,6 +22,25 @@ export interface PAAvailability {
   dayOfWeek: number
   startMinute: number
   endMinute: number
+}
+
+export interface ScheduleInput {
+  cycle: Cycle
+  classMeetings: ClassMeeting[]
+  workshops: Workshop[]
+  assignments: Assignment[]
+  availabilities: PAAvailability[]
+  /** PA id → community string (null if not set) */
+  paCommunities: Map<string, string | null>
+  /** Workshop id → school community string (null if not set) */
+  workshopSchoolCommunities: Map<string, string | null>
+  /** PA id → current assignment count this cycle */
+  assignmentCounts: Map<string, number>
+  /** PA id → monthly quota */
+  quotas: Map<string, number>
+  generateId: () => string
+  /** Max one-way commute in minutes. Default 45. */
+  maxCommuteMinutes?: number
 }
 
 export interface ScheduleResult {
@@ -59,31 +81,36 @@ function conflictingPAs(bookings: Booking[], startMinute: number, endMinute: num
 /**
  * Fill unscheduled workshops from PA availability.
  *
- * Greedy and order-stable: each workshop takes the meeting time its class
- * already holds that the most PAs can cover, then claims up to `maxPAs` of
- * them. A workshop whose best option still can't reach `minPAs` is left
- * UNSCHEDULED rather than under-staffed. PAs already booked at an overlapping
- * time that day are excluded, so nobody is double-booked.
+ * Greedy and order-stable. For each workshop:
+ * 1. Find PAs available at the meeting time
+ * 2. Filter out PAs who can't commute to the school in time
+ * 3. Filter out PAs who have already met their monthly quota
+ * 4. Sort remaining by quota deficit (most under-scheduled first), then commute
+ * 5. Assign up to maxPAs; leave UNSCHEDULED if minPAs can't be met
  *
  * Pure — the caller loads the rows and persists the result.
- *
- * Known limitation: each class is placed on the *first* matching weekday in
- * the cycle, so a multi-week cycle stacks everything into week one. Spreading
- * across the cycle is the next thing to fix here.
  */
-export function runSchedule(
-  cycle: Cycle,
-  classMeetings: ClassMeeting[],
-  workshops: Workshop[],
-  assignments: Assignment[],
-  availabilities: PAAvailability[],
-  generateId: () => string
-): ScheduleResult {
+export function runSchedule(input: ScheduleInput): ScheduleResult {
+  const {
+    cycle,
+    classMeetings,
+    workshops,
+    assignments,
+    availabilities,
+    paCommunities,
+    workshopSchoolCommunities,
+    assignmentCounts,
+    quotas,
+    generateId,
+    maxCommuteMinutes = 45,
+  } = input
+
+  // Mutable copy of counts so we can track assignments made during this run
+  const counts = new Map(assignmentCounts)
+
   const keptAssignments = assignments.filter((a) => a.status === 'CONFIRMED')
   const newAssignments: Omit<Assignment, 'assignedAt'>[] = [...keptAssignments]
 
-  // Confirmed work already owns its PAs. Seed the booking map from the
-  // workshop's own scheduled instants — that's the authoritative time.
   const bookedPerDate = new Map<string, Booking[]>()
   const addBooking = (date: string, booking: Booking) => {
     const existing = bookedPerDate.get(date)
@@ -91,6 +118,7 @@ export function runSchedule(
     else bookedPerDate.set(date, [booking])
   }
 
+  // Seed bookings from confirmed assignments
   for (const a of keptAssignments) {
     const ws = workshops.find((w) => w.id === a.workshopId)
     if (!ws?.scheduledStart || !ws.scheduledEnd) continue
@@ -111,8 +139,7 @@ export function runSchedule(
       continue
     }
 
-    // A class can meet more than once a week; try every meeting and keep the
-    // one the most PAs can staff.
+    const schoolCommunity = workshopSchoolCommunities.get(ws.id) ?? null
     const meetings = classMeetings.filter((cm) => cm.classSectionId === ws.classSectionId)
     let best: { meeting: ClassMeeting; date: string; available: string[] } | null = null
 
@@ -120,16 +147,29 @@ export function runSchedule(
       const dates = getDatesForDayOfWeek(meeting.dayOfWeek, cycleStart, cycleEnd)
       if (dates.length === 0) continue
 
-      const date = dates[0]
-      const excluded = conflictingPAs(
-        bookedPerDate.get(date) ?? [],
-        meeting.startMinute,
-        meeting.endMinute
-      )
-      const available = findAvailablePAs(meeting, availabilities, excluded)
+      // Try all matching dates in the cycle (not just week 1)
+      for (const date of dates) {
+        const excluded = conflictingPAs(
+          bookedPerDate.get(date) ?? [],
+          meeting.startMinute,
+          meeting.endMinute
+        )
 
-      if (available.length < ws.minPAs) continue
-      if (!best || available.length > best.available.length) best = { meeting, date, available }
+        let available = findAvailablePAs(meeting, availabilities, excluded)
+
+        // Filter by commute feasibility
+        available = available.filter((paId) =>
+          canCommute(paCommunities.get(paId), schoolCommunity, maxCommuteMinutes)
+        )
+
+        // Filter out PAs over quota
+        available = filterOverQuota(available, counts, quotas)
+
+        if (available.length < ws.minPAs) continue
+        if (!best || available.length > best.available.length) {
+          best = { meeting, date, available }
+        }
+      }
     }
 
     if (!best) {
@@ -138,13 +178,21 @@ export function runSchedule(
     }
 
     const { meeting, date, available } = best
-    for (const paId of available.slice(0, ws.maxPAs)) {
+
+    // Sort candidates: quota deficit first, then shorter commute
+    let sorted = sortByQuotaDeficit(available, counts, quotas)
+    sorted = sortByCommute(sorted, paCommunities, schoolCommunity)
+
+    // Assign up to maxPAs
+    const assigned = sorted.slice(0, ws.maxPAs)
+    for (const paId of assigned) {
       addBooking(date, {
         paId,
         startMinute: meeting.startMinute,
         endMinute: meeting.endMinute,
       })
       newAssignments.push({ id: generateId(), workshopId: ws.id, paId, status: 'PROPOSED' })
+      counts.set(paId, (counts.get(paId) ?? 0) + 1)
     }
 
     newWorkshops.push({

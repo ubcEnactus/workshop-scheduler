@@ -43,6 +43,13 @@ model User {
   schoolId String?
   school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
+  // Community the PA is based in (for commute calculations). App-layer validated
+  // against the COMMUNITIES list in src/lib/scheduling/commute.ts.
+  community String?
+
+  // Monthly workshop quota for PAs. Null = use system default (4).
+  monthlyQuota Int?
+
   accounts        Account[]
   sessions        Session[]
   availabilities  Availability[]
@@ -64,6 +71,9 @@ model School {
   id       String @id @default(cuid())
   name     String
   district String
+
+  // Community the school is located in (for commute calculations).
+  community String?
 
   teachers      User[]
   classSections ClassSection[]
@@ -174,8 +184,8 @@ model Workshop {
 
   scheduledStart DateTime? // UTC; null until scheduled
   scheduledEnd   DateTime?
-  minPAs         Int            @default(1)
-  maxPAs         Int            @default(3)
+  minPAs         Int            @default(3)
+  maxPAs         Int            @default(5)
   status         WorkshopStatus @default(UNSCHEDULED)
 
   assignments Assignment[]
