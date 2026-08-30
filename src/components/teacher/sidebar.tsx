@@ -1,3 +1,5 @@
+'use client'
+
 import { Calendar, Clock, LayoutGrid } from 'lucide-react'
 
 import { RoleSidebar, type NavItem } from '@/components/shell/role-sidebar'
