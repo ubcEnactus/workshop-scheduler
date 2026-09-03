@@ -78,6 +78,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    async signIn({ user }) {
+      const email = user.email?.trim().toLowerCase()
+      if (!email) return false
+
+      const invitedUser = await prisma.user.findFirst({
+        where: { email, deletedAt: null },
+        select: { id: true },
+      })
+      return invitedUser !== null
+    },
     async session({ session, user }) {
       // Prisma adapter passes the DB user. Project role + schoolId onto the
       // session so server components and actions can read them synchronously.
@@ -108,13 +118,13 @@ export type SessionUser = {
 export async function getCurrentUser(): Promise<SessionUser | null> {
   const session = await auth()
   if (!session?.user) return null
-  return {
-    id: session.user.id,
-    email: session.user.email ?? '',
-    name: session.user.name ?? null,
-    role: session.user.role,
-    schoolId: session.user.schoolId,
-  }
+
+  // Sessions can outlive a soft-delete or role/school update. Always project
+  // the current non-deleted DB row before authorizing a request.
+  return prisma.user.findFirst({
+    where: { id: session.user.id, deletedAt: null },
+    select: { id: true, email: true, name: true, role: true, schoolId: true },
+  })
 }
 
 /**

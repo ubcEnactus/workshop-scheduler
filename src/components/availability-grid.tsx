@@ -1,4 +1,3 @@
-import { Button } from '@/components/ui/button'
 import { SLOT_STARTS } from '@/lib/schemas/availability'
 import { DAY_LABELS, formatSlotRange } from '@/lib/time'
 
@@ -71,7 +70,12 @@ export function AvailabilityGrid({ checked, action, saved, error }: Availability
       </div>
 
       <div className="mt-4 flex items-center gap-4">
-        <Button type="submit">Save availability</Button>
+        <button
+          type="submit"
+          className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-300"
+        >
+          Save availability
+        </button>
         <p className="text-xs text-zinc-500">
           Only checked slots are kept — unchecking everything clears your availability.
         </p>

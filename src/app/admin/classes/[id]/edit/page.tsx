@@ -31,16 +31,14 @@ export default async function EditClassPage({
   })
   if (!cls) notFound()
 
-  const [teachers, schools] = await Promise.all([
-    prisma.user.findMany({
-      where: { role: 'TEACHER', OR: [{ deletedAt: null }, { id: cls.teacherId }] },
-      orderBy: { name: 'asc' },
-    }),
-    prisma.school.findMany({
-      where: { OR: [{ deletedAt: null }, { id: cls.schoolId }] },
-      orderBy: { name: 'asc' },
-    }),
-  ])
+  const teachers = await prisma.user.findMany({
+    where: {
+      role: 'TEACHER',
+      OR: [{ deletedAt: null, school: { deletedAt: null } }, { id: cls.teacherId }],
+    },
+    include: { school: true },
+    orderBy: { name: 'asc' },
+  })
 
   return (
     <main className="mx-auto max-w-2xl space-y-12 px-6 py-16">
@@ -90,22 +88,9 @@ export default async function EditClassPage({
             >
               {teachers.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.deletedAt ? `${t.name} (removed)` : t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium">School</label>
-            <select
-              name="schoolId"
-              defaultValue={cls.schoolId}
-              required
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            >
-              {schools.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.deletedAt ? `${s.name} (removed)` : s.name}
+                  {t.deletedAt
+                    ? `${t.name} (removed)`
+                    : `${t.name} · ${t.school?.name ?? 'No school'}`}
                 </option>
               ))}
             </select>

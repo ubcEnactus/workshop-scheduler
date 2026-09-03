@@ -13,6 +13,14 @@ function isDuplicateEmail(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
 }
 
+async function isActiveSchool(schoolId: string): Promise<boolean> {
+  const school = await prisma.school.findFirst({
+    where: { id: schoolId, deletedAt: null },
+    select: { id: true },
+  })
+  return school !== null
+}
+
 export async function createTeacher(formData: FormData) {
   await requireRole('ADMIN')
   const parsed = teacherSchema.safeParse({
@@ -22,6 +30,9 @@ export async function createTeacher(formData: FormData) {
   })
   if (!parsed.success) {
     redirect(`/admin/teachers?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
+  }
+  if (!(await isActiveSchool(parsed.data.schoolId))) {
+    redirect('/admin/teachers?error=Select+an+active+school.')
   }
 
   try {
@@ -58,6 +69,9 @@ export async function updateTeacher(formData: FormData) {
       `/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(parsed.error.issues[0].message)}`
     )
   }
+  if (!(await isActiveSchool(parsed.data.schoolId))) {
+    redirect(`/admin/teachers/${id.data.id}/edit?error=Select+an+active+school.`)
+  }
 
   try {
     await prisma.user.update({
@@ -82,6 +96,13 @@ export async function softDeleteTeacher(formData: FormData) {
   const id = teacherIdSchema.safeParse({ id: formData.get('id') })
   if (!id.success) {
     redirect('/admin/teachers?error=Unknown+teacher.')
+  }
+  const assignedClass = await prisma.classSection.findFirst({
+    where: { teacherId: id.data.id },
+    select: { id: true },
+  })
+  if (assignedClass) {
+    redirect('/admin/teachers?error=Reassign+this+teacher%27s+classes+before+removing+them.')
   }
   await prisma.user.update({
     where: { id: id.data.id, role: 'TEACHER', deletedAt: null },

@@ -46,6 +46,17 @@ export async function softDeleteSchool(formData: FormData) {
   if (!id.success) {
     redirect('/admin/schools?error=Unknown+school.')
   }
+  const dependentRecord = await prisma.school.findFirst({
+    where: {
+      id: id.data.id,
+      deletedAt: null,
+      OR: [{ teachers: { some: { deletedAt: null } } }, { classSections: { some: {} } }],
+    },
+    select: { id: true },
+  })
+  if (dependentRecord) {
+    redirect('/admin/schools?error=Move+or+remove+this+school%27s+teachers+and+classes+first.')
+  }
   await prisma.school.update({
     where: { id: id.data.id, deletedAt: null },
     data: { deletedAt: new Date() },

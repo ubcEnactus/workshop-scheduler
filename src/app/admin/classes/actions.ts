@@ -3,15 +3,36 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
-import { z } from 'zod'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { classSectionSchema, classSectionIdSchema, classMeetingSchema } from '@/lib/schemas/classes'
+import {
+  classMeetingIdSchema,
+  classMeetingSchema,
+  classSectionIdSchema,
+  classSectionSchema,
+} from '@/lib/schemas/classes'
 
 function timeToMinutes(time: unknown): number {
   if (typeof time !== 'string') return NaN
   const [h, m] = time.split(':').map(Number)
   return h * 60 + m
+}
+
+function toNumber(value: unknown): number {
+  return typeof value === 'string' && value !== '' ? Number(value) : NaN
+}
+
+async function getTeacherSchoolId(teacherId: string): Promise<string | null> {
+  const teacher = await prisma.user.findFirst({
+    where: {
+      id: teacherId,
+      role: 'TEACHER',
+      deletedAt: null,
+      school: { deletedAt: null },
+    },
+    select: { schoolId: true },
+  })
+  return teacher?.schoolId ?? null
 }
 
 export async function createClassSection(formData: FormData) {
@@ -21,12 +42,14 @@ export async function createClassSection(formData: FormData) {
     subject: formData.get('subject') || undefined,
     grade: formData.get('grade') || undefined,
     teacherId: formData.get('teacherId'),
-    schoolId: formData.get('schoolId'),
   })
   if (!parsed.success) {
     redirect(`/admin/classes?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
-  await prisma.classSection.create({ data: parsed.data })
+  const schoolId = await getTeacherSchoolId(parsed.data.teacherId)
+  if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
+
+  await prisma.classSection.create({ data: { ...parsed.data, schoolId } })
   revalidatePath('/admin/classes')
 }
 
@@ -42,7 +65,6 @@ export async function updateClassSection(formData: FormData) {
     subject: formData.get('subject') || undefined,
     grade: formData.get('grade') || undefined,
     teacherId: formData.get('teacherId'),
-    schoolId: formData.get('schoolId'),
   })
   if (!parsed.success) {
     redirect(
@@ -50,7 +72,15 @@ export async function updateClassSection(formData: FormData) {
     )
   }
 
-  await prisma.classSection.update({ where: { id: id.data.id }, data: parsed.data })
+  const schoolId = await getTeacherSchoolId(parsed.data.teacherId)
+  if (!schoolId) {
+    redirect(`/admin/classes/${id.data.id}/edit?error=Select+an+active+teacher+with+a+school.`)
+  }
+
+  await prisma.classSection.update({
+    where: { id: id.data.id },
+    data: { ...parsed.data, schoolId },
+  })
   redirect('/admin/classes')
 }
 
@@ -68,7 +98,7 @@ export async function deleteClassSection(formData: FormData) {
       redirect(
         '/admin/classes?error=' +
           encodeURIComponent(
-            "This class has workshops in a cycle and can't be deleted. Remove it from the cycle first."
+            "This class has workshop history and can't be deleted. Keep it for now."
           )
       )
     }
@@ -82,7 +112,7 @@ export async function addMeeting(formData: FormData) {
   const classSectionId = formData.get('classSectionId')
   const parsed = classMeetingSchema.safeParse({
     classSectionId,
-    dayOfWeek: Number(formData.get('dayOfWeek')),
+    dayOfWeek: toNumber(formData.get('dayOfWeek')),
     startMinute: timeToMinutes(formData.get('startTime')),
     endMinute: timeToMinutes(formData.get('endTime')),
   })
@@ -93,13 +123,38 @@ export async function addMeeting(formData: FormData) {
         : '/admin/classes'
     redirect(`${target}?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
+
+  const cls = await prisma.classSection.findFirst({
+    where: {
+      id: parsed.data.classSectionId,
+      teacher: { deletedAt: null },
+      school: { deletedAt: null },
+    },
+    select: { id: true },
+  })
+  if (!cls) redirect('/admin/classes?error=Unknown+or+inactive+class.')
+
+  const overlap = await prisma.classMeeting.findFirst({
+    where: {
+      classSectionId: parsed.data.classSectionId,
+      dayOfWeek: parsed.data.dayOfWeek,
+      startMinute: { lt: parsed.data.endMinute },
+      endMinute: { gt: parsed.data.startMinute },
+    },
+    select: { id: true },
+  })
+  if (overlap) {
+    redirect(
+      `/admin/classes/${parsed.data.classSectionId}/edit?error=Meeting+times+cannot+overlap.`
+    )
+  }
   await prisma.classMeeting.create({ data: parsed.data })
   revalidatePath(`/admin/classes/${parsed.data.classSectionId}/edit`)
 }
 
 export async function deleteMeeting(formData: FormData) {
   await requireRole('ADMIN')
-  const parsed = z.object({ id: z.string().min(1) }).safeParse({ id: formData.get('id') })
+  const parsed = classMeetingIdSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) {
     redirect('/admin/classes?error=Unknown+meeting+time.')
   }

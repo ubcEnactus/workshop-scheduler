@@ -1,50 +1,46 @@
-# Workshop Scheduler — agent notes
+# Workshop Scheduler — working agreement
 
-Stack: **Next.js 15** (App Router) · **Prisma 6** · **Auth.js v5** (magic-link via Resend) · **Tailwind v4** · **TypeScript strict**.
+Stack: Next.js 15 App Router, Prisma 6, Auth.js v5, Tailwind v4, and strict TypeScript.
 
-> Auth.js v5 ships under a `-beta` npm tag but is the de-facto stable line. We pin an exact beta in `package.json`; bump it only deliberately.
+## Start here
 
-## Before changing code
+- Read `docs/DESIGN_BRIEF.md` before changing scheduling behavior.
+- The brief describes the pilot we are building. The checked-in schema, migrations, and routes describe what exists today.
+- Do not build new work on `Cycle`. Its removal must be the first scheduling migration, and it must preserve any data that matters.
 
-- Read `docs/DESIGN_BRIEF.md` before changing scheduling concepts or flows.
-- The brief is the target pilot. The checked-in schema, migrations, and routes describe current behavior.
-- The target has no `Cycle` or `Term`. Planning moves through calendar months derived from workshop dates. Remove the current `Cycle` dependency as an explicit feature with a committed migration; do not mix it into unrelated work.
+## Product rules
 
-## Pilot authority (locked)
+- The admin controls the schedule. Only admins create or change workshops, assignments, publishing, cancellations, replacements, and completion state.
+- Teachers are view-only. They provide schedules outside the app; admins record those schedules as class meeting times.
+- PAs submit recurring availability and view published assignments. They do not accept, decline, or edit assignments.
+- A workshop has a real date and time before matching begins. **Assign PAs** only staffs existing workshop slots; it never creates, moves, or dates them.
+- Planning follows calendar months. There is no cycle or term workflow.
+- Automatic matching respects PA availability, monthly quotas, and a configurable gap between assignments. It may leave a workshop unstaffed rather than break a constraint.
+- Admin edits and published work must survive a matcher rerun.
 
-- Admins are the only role that may create or change workshops, schedules, assignments, cancellations, replacements, or completion state.
-- PAs may submit availability. They cannot accept, decline, or change assignments.
-- Teachers are view-only. Admins enter teacher schedules as `ClassMeeting`s and create each dated `Workshop` slot before PA matching runs.
-- **Assign PAs assigns PAs only.** It must not create workshop slots or choose/change their dates and times.
-- Each PA has an admin-set monthly workshop quota. Automatic matching balances toward those quotas and never exceeds one; assigning fewer is valid when constraints prevent safe staffing.
-- Never automatically give a PA back-to-back assignments. Enforce the configured minimum gap between workshops, including workshops at the same school; leave the slot unassigned if necessary.
+## Code rules
 
-## Engineering rules (locked)
-
-- Mutations use Server Actions, not API routes, unless an external caller requires an API.
-- `requireRole(...)` from `@/lib/auth` is the first executable line of every protected page and Server Action. There is no middleware authorization layer.
+- Use Server Actions for mutations unless an external caller genuinely needs an API route.
+- Call `requireRole(...)` from `@/lib/auth` as the first executable line of every protected page and Server Action.
 - Validate every Server Action input with a Zod schema from `src/lib/schemas/` before using it.
-- Query Prisma only from Server Components or Server Actions. Import the singleton from `@/lib/db`; only `prisma/seed.ts` may instantiate `PrismaClient`.
-- Never use `any`; accept `unknown` and narrow it.
-- Create schema changes with `npm run db:migrate -- --name <descriptive_name>` and commit the migration.
-- `User` and `School` are soft-deleted; always filter them with `deletedAt: null`. Scheduling models hard-delete unless this file documents otherwise.
-- Keep teachers as `User { schoolId? }` until teacher-only fields justify a separate `Teacher { userId }` model.
-- Store concrete instants in UTC and render them in `America/Vancouver`.
-- Derive workshop calendar months in `America/Vancouver`, not from the UTC month of the stored instant.
-- `ClassMeeting` and `Availability` are recurring Vancouver wall-clock slots: `dayOfWeek` (0=Mon…4=Fri) plus minute-of-day integers. Never store recurring slots as `DateTime`.
-- Production email requires `AUTH_RESEND_KEY` and a verified `AUTH_RESEND_FROM`; never hardcode either.
+- Access Prisma only from Server Components and Server Actions. Import the singleton from `@/lib/db`; only `prisma/seed.ts` may create a client.
+- Do not use `any`. Accept `unknown` and narrow it.
+- Create schema changes with `npm run db:migrate -- --name <descriptive_name>` and commit the generated migration. Never use `db push` for feature work.
+- `User` and `School` are soft-deleted and must be queried with `deletedAt: null`. Scheduling records use lifecycle statuses and otherwise hard-delete.
+- Keep teachers as `User { schoolId? }` until teacher-specific data justifies a separate model.
+- Store concrete workshop instants in UTC and render or group them in `America/Vancouver`.
+- `ClassMeeting` and `Availability` are recurring Vancouver wall-clock values: weekday `0…4` plus minutes from midnight. They are not `DateTime`s.
+- Production email requires `AUTH_RESEND_KEY` and a verified `AUTH_RESEND_FROM`.
 
-## Current implementation guardrails
+## Current handoff point
 
-- The live schema still uses `Cycle`; the target removes it entirely. Do not introduce `Term` or assume the calendar-month workflow exists before its migration lands.
-- Teacher availability screens exist but are not scheduler inputs. The target matcher uses PA availability plus admin-entered class meetings.
-- The current scheduler chooses workshop dates from class meetings. That placement behaviour is not part of the target: **Assign PAs** must assign PAs to admin-created, dated workshop slots only.
-- The current scheduler also lacks travel constraints, manual overrides, and locking.
-- Invite-only authentication and admin PA management are pilot blockers and are not implemented yet.
+The app currently has invite-only magic-link auth, admin management for schools, teachers, PAs, classes and class meeting times, PA availability, and read-only PA/teacher dashboards.
 
-## Verify changes
+The obsolete cycle and schedule screens have been removed, but the legacy `Cycle` relationship and old scheduling statuses remain in Prisma until a developer can create and verify the database migration. Do not expose that legacy model in new UI. The next scheduling feature should replace it with admin-created dated workshops, then add monthly quotas, assignment gaps, locking, and publishing in that order.
 
-Run the relevant checks before handoff:
+## Before handoff
+
+Run:
 
 ```bash
 npm test

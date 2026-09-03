@@ -11,18 +11,15 @@ export default async function ClassesPage({
   await requireRole('ADMIN')
   const { error } = await searchParams
 
-  const [classes, teachers, schools] = await Promise.all([
+  const [classes, teachers] = await Promise.all([
     prisma.classSection.findMany({
       where: { school: { deletedAt: null }, teacher: { deletedAt: null } },
       include: { teacher: true, school: true, meetings: true },
       orderBy: { name: 'asc' },
     }),
     prisma.user.findMany({
-      where: { role: 'TEACHER', deletedAt: null },
-      orderBy: { name: 'asc' },
-    }),
-    prisma.school.findMany({
-      where: { deletedAt: null },
+      where: { role: 'TEACHER', deletedAt: null, school: { deletedAt: null } },
+      include: { school: true },
       orderBy: { name: 'asc' },
     }),
   ])
@@ -66,22 +63,7 @@ export default async function ClassesPage({
             <option value="">Select a teacher…</option>
             {teachers.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm font-medium">School</label>
-          <select
-            name="schoolId"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          >
-            <option value="">Select a school…</option>
-            {schools.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
+                {t.name} · {t.school?.name}
               </option>
             ))}
           </select>

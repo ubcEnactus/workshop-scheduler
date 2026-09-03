@@ -1,5 +1,12 @@
 import { SLOT_MINUTES } from '@/lib/schemas/availability'
-import type { PAAvailability } from './algorithm'
+
+/** A contiguous weekly window when a PA is available. */
+export type PAAvailability = {
+  paId: string
+  dayOfWeek: number
+  startMinute: number
+  endMinute: number
+}
 
 /** The subset of an `Availability` row the scheduler needs. */
 export type AvailabilitySlot = {

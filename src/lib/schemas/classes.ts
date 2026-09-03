@@ -5,7 +5,6 @@ export const classSectionSchema = z.object({
   subject: z.string().trim().min(1).optional(),
   grade: z.string().trim().min(1).optional(),
   teacherId: z.string().min(1, 'Teacher is required.'),
-  schoolId: z.string().min(1, 'School is required.'),
 })
 
 // dayOfWeek: 0=Mon … 4=Fri. startMinute/endMinute: minutes from local midnight.
@@ -22,6 +21,10 @@ export const classMeetingSchema = z
   })
 
 export const classSectionIdSchema = z.object({
+  id: z.string().min(1),
+})
+
+export const classMeetingIdSchema = z.object({
   id: z.string().min(1),
 })
 

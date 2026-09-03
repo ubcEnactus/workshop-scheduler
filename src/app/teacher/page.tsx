@@ -1,84 +1,69 @@
-import Link from 'next/link'
-
 import { requireRole, signOut } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstant, formatInstantRange } from '@/lib/time'
-
-function workshopTime(start: Date | null, end: Date | null): string {
-  if (start && end) return formatInstantRange(start, end)
-  if (start) return formatInstant(start)
-  return 'Not scheduled yet'
-}
+import { formatInstantRange } from '@/lib/time'
 
 export default async function TeacherHome() {
   const user = await requireRole('TEACHER')
 
   async function logout() {
     'use server'
+    await requireRole('TEACHER')
     await signOut({ redirectTo: '/login' })
   }
 
   const workshops = user.schoolId
     ? await prisma.workshop.findMany({
-        where: { classSection: { schoolId: user.schoolId, school: { deletedAt: null } } },
-        include: {
-          classSection: { select: { name: true, teacher: { select: { name: true } } } },
-          cycle: { select: { name: true } },
+        where: {
+          status: 'CONFIRMED',
+          scheduledStart: { gte: new Date() },
+          classSection: { schoolId: user.schoolId, school: { deletedAt: null } },
         },
-        orderBy: [{ scheduledStart: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }],
+        include: {
+          classSection: { select: { name: true } },
+          assignments: {
+            where: { status: 'CONFIRMED' },
+            include: { pa: { select: { name: true, email: true } } },
+          },
+        },
+        orderBy: { scheduledStart: 'asc' },
       })
     : []
-
-  const availabilityCount = await prisma.availability.count({ where: { userId: user.id } })
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <h1 className="text-3xl font-semibold tracking-tight">Hello {user.name ?? user.email}</h1>
+      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        Your account is view-only. An admin manages class times, workshops, and instructors.
+      </p>
 
       <section className="mt-8">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-medium">Weekly availability</h2>
-          <Link
-            href="/teacher/availability"
-            className="text-sm font-medium text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-          >
-            {availabilityCount > 0 ? 'Edit availability' : 'Set your availability'}
-          </Link>
-        </div>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          {availabilityCount > 0
-            ? `You've marked ${availabilityCount} slot${availabilityCount === 1 ? '' : 's'}.`
-            : "You haven't submitted availability yet."}
-        </p>
-      </section>
-
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Workshops at your school</h2>
+        <h2 className="text-lg font-medium">Upcoming workshops at your school</h2>
         {!user.schoolId ? (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Your account isn&apos;t linked to a school yet — ask an admin to set one.
+            Your account is not linked to a school yet. Ask an admin to update it.
           </p>
         ) : workshops.length === 0 ? (
           <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            No workshops requested this cycle yet.
+            No published workshops are currently scheduled.
           </p>
         ) : (
           <ul className="mt-3 space-y-3">
-            {workshops.map((w) => (
+            {workshops.map((workshop) => (
               <li
-                key={w.id}
+                key={workshop.id}
                 className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
               >
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="font-medium">{w.classSection.name}</p>
-                  <span className="text-xs text-zinc-500">{w.status}</span>
-                </div>
+                <p className="font-medium">{workshop.classSection.name}</p>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {w.cycle.name}
-                  {w.classSection.teacher?.name ? ` · ${w.classSection.teacher.name}` : ''}
+                  {workshop.scheduledStart && workshop.scheduledEnd
+                    ? formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)
+                    : 'Time unavailable'}
                 </p>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {workshopTime(w.scheduledStart, w.scheduledEnd)}
+                  PAs:{' '}
+                  {workshop.assignments
+                    .map((assignment) => assignment.pa.name ?? assignment.pa.email)
+                    .join(', ') || 'Not assigned'}
                 </p>
               </li>
             ))}

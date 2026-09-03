@@ -5,9 +5,8 @@ import { requireRole, signOut } from '@/lib/auth'
 const SECTIONS = [
   { href: '/admin/schools', name: 'Schools', blurb: 'Partner schools and their districts.' },
   { href: '/admin/teachers', name: 'Teachers', blurb: 'Teacher accounts and school assignments.' },
+  { href: '/admin/pas', name: 'PAs', blurb: 'Instructor accounts and access.' },
   { href: '/admin/classes', name: 'Classes', blurb: 'Class sections and weekly meeting times.' },
-  { href: '/admin/cycles', name: 'Cycles', blurb: 'Open and close scheduling cycles.' },
-  { href: '/admin/schedule', name: 'Schedule', blurb: 'Match PAs to workshops and confirm.' },
 ] as const
 
 export default async function AdminHome() {
@@ -15,14 +14,13 @@ export default async function AdminHome() {
 
   async function logout() {
     'use server'
+    await requireRole('ADMIN')
     await signOut({ redirectTo: '/login' })
   }
 
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">
-        Hello {user.name ?? user.email}, role: {user.role}
-      </h1>
+      <h1 className="text-3xl font-semibold tracking-tight">Hello {user.name ?? user.email}</h1>
 
       <nav className="mt-8 grid gap-3 sm:grid-cols-2">
         {SECTIONS.map((section) => (

@@ -5,7 +5,7 @@
 //   2. Recurring weekly slots (dayOfWeek + minute-of-day ints on
 //      ClassMeeting/Availability) — already local wall-clock, so formatting
 //      is pure arithmetic. No time zone involved until they're combined
-//      with a concrete Cycle date.
+//      with an admin-selected workshop date.
 
 export const VANCOUVER_TZ = 'America/Vancouver'
 
@@ -33,12 +33,6 @@ function splitMinuteOfDay(min: number): { clock: string; meridiem: 'AM' | 'PM' }
   }
 }
 
-/** 510 → "8:30 AM" */
-export function formatMinuteOfDay(min: number): string {
-  const { clock, meridiem } = splitMinuteOfDay(min)
-  return `${clock} ${meridiem}`
-}
-
 /**
  * 510 → "8:30–9:00 AM". The meridiem is collapsed only when both endpoints
  * share it: 690 → "11:30 AM–12:00 PM".
@@ -52,57 +46,9 @@ export function formatSlotRange(startMin: number, durationMin = 30): string {
   return `${start.clock} ${start.meridiem}–${end.clock} ${end.meridiem}`
 }
 
-/** UTC instant → "Tue, Feb 3, 2026, 10:00 AM" (Vancouver wall clock). */
-export function formatInstant(d: Date): string {
-  return instantFormatter.format(d)
-}
-
 /** "Tue, Feb 3, 2026, 10:00 – 11:00 AM" — shared parts collapsed by Intl. */
 export function formatInstantRange(start: Date, end: Date): string {
   return instantFormatter.formatRange(start, end)
-}
-
-// --- Scheduling helpers ---
-// Used by the matching algorithm to turn recurring weekly slots into the
-// concrete UTC instants stored on Workshop.scheduledStart/End.
-
-// dayOfWeek: 0=Mon … 4=Fri. JS Date.getUTCDay(): 0=Sun, 1=Mon … 5=Fri.
-function toUtcDay(dayOfWeek: number): number {
-  return dayOfWeek + 1
-}
-
-/**
- * `Cycle.startDate`/`endDate` are UTC-midnight date-only values, so the UTC
- * calendar date is the intended one — don't run these through a Vancouver
- * formatter or they'll shift back a day.
- */
-export function utcDateKey(d: Date): string {
-  return d.toISOString().slice(0, 10)
-}
-
-/**
- * Every ISO date (YYYY-MM-DD) in [startDate, endDate] falling on `dayOfWeek`.
- * Returns [] for a weekend day or a range containing no such weekday.
- */
-export function getDatesForDayOfWeek(
-  dayOfWeek: number,
-  startDate: string,
-  endDate: string
-): string[] {
-  if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 4) return []
-  const target = toUtcDay(dayOfWeek)
-  const dates: string[] = []
-  const end = new Date(endDate + 'T00:00:00Z')
-  const cur = new Date(startDate + 'T00:00:00Z')
-
-  while (cur.getUTCDay() !== target) {
-    cur.setUTCDate(cur.getUTCDate() + 1)
-  }
-  while (cur <= end) {
-    dates.push(utcDateKey(cur))
-    cur.setUTCDate(cur.getUTCDate() + 7)
-  }
-  return dates
 }
 
 /** True when an availability window fully contains a meeting window. */
