@@ -14,14 +14,18 @@ export default async function TeacherHome() {
   const workshops = user.schoolId
     ? await prisma.workshop.findMany({
         where: {
-          status: 'CONFIRMED',
+          status: 'PUBLISHED',
           scheduledStart: { gte: new Date() },
-          classSection: { schoolId: user.schoolId, school: { deletedAt: null } },
+          classSection: {
+            schoolId: user.schoolId,
+            school: { deletedAt: null },
+            teacher: { deletedAt: null },
+          },
         },
         include: {
           classSection: { select: { name: true } },
           assignments: {
-            where: { status: 'CONFIRMED' },
+            where: { status: 'PUBLISHED', pa: { deletedAt: null, role: 'PA' } },
             include: { pa: { select: { name: true, email: true } } },
           },
         },
@@ -55,9 +59,7 @@ export default async function TeacherHome() {
               >
                 <p className="font-medium">{workshop.classSection.name}</p>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {workshop.scheduledStart && workshop.scheduledEnd
-                    ? formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)
-                    : 'Time unavailable'}
+                  {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
                 </p>
                 <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
                   PAs:{' '}

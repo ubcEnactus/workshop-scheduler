@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { AuthError } from 'next-auth'
 
 import { getCurrentUser, signIn } from '@/lib/auth'
 import { loginSchema } from '@/lib/schemas/auth'
@@ -17,10 +18,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     if (!parsed.success) {
       redirect('/login?error=InvalidEmail')
     }
-    await signIn('resend', {
-      email: parsed.data.email,
-      redirectTo: callbackUrl ?? '/',
-    })
+    try {
+      await signIn('resend', {
+        email: parsed.data.email,
+        redirectTo: callbackUrl ?? '/',
+        redirect: false,
+      })
+    } catch (error) {
+      if (error instanceof AuthError) redirect('/login?error=AccessDenied')
+      throw error
+    }
+    redirect('/login/check-email')
   }
 
   return (

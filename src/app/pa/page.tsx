@@ -17,8 +17,12 @@ export default async function PAHome() {
     prisma.assignment.findMany({
       where: {
         paId: user.id,
-        status: 'CONFIRMED',
-        workshop: { status: 'CONFIRMED', scheduledStart: { gte: new Date() } },
+        status: 'PUBLISHED',
+        workshop: {
+          status: 'PUBLISHED',
+          scheduledStart: { gte: new Date() },
+          classSection: { school: { deletedAt: null }, teacher: { deletedAt: null } },
+        },
       },
       include: {
         workshop: {
@@ -71,9 +75,7 @@ export default async function PAHome() {
                     {workshop.classSection.school.name}
                   </p>
                   <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                    {workshop.scheduledStart && workshop.scheduledEnd
-                      ? formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)
-                      : 'Time unavailable'}
+                    {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
                   </p>
                 </li>
               )

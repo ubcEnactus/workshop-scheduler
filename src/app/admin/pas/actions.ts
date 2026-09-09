@@ -74,7 +74,6 @@ export async function softDeletePA(formData: FormData) {
   const futureAssignment = await prisma.assignment.findFirst({
     where: {
       paId: parsed.data.id,
-      status: 'CONFIRMED',
       workshop: {
         scheduledStart: { gte: new Date() },
         status: { notIn: ['CANCELLED', 'COMPLETED'] },

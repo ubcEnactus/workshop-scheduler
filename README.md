@@ -12,8 +12,11 @@ Implemented today:
 - Admin management of schools, teachers, PAs, classes, and class meeting times
 - Recurring PA availability
 - Read-only PA and teacher dashboards for published work
+- Dated draft workshops: month navigation, school/class filters, create and detail/edit forms
+- Vancouver date/time, hosting-block, staffing and class/teacher overlap validation
+- Isolated PostgreSQL integration tests and Playwright browser coverage
 
-The old cycle-based screens and scheduler have been removed. The legacy `Cycle` database relationship remains until it can be replaced by a committed migration. See `AGENTS.md` for the exact handoff point.
+The cycle schema has been removed through a committed migration. Workshops have required UTC start/end instants and draft/published/completed/cancelled lifecycle states. Assignments are draft or published. Staffing, locking and publishing actions start in iteration 2; the seed includes a published example for the role dashboards. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md) for completed work and the remaining iterations.
 
 ## Local setup
 
@@ -21,7 +24,12 @@ Use Node.js 20.19 or newer. The repository includes `.nvmrc`.
 
 ```bash
 npm ci
-cp .env.example .env.local
+npm run db:local
+```
+
+Keep that terminal running. `db:local` starts a local-only PostgreSQL cluster under ignored `work/dev-db`, chooses a free port and creates `.env.local` with random credentials. It preserves an existing environment file and refuses to replace one pointing to another database. In a second terminal:
+
+```bash
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -29,7 +37,7 @@ npm run dev
 
 Open <http://localhost:3000> and sign in as `admin@workshopscheduler.local`. Without a Resend key, the development server prints the magic link in its terminal. The seed also creates `teacher1@workshopscheduler.local` and `pa1@workshopscheduler.local`.
 
-Your `.env.local` needs:
+Alternatively, copy `.env.example` to `.env.local` and configure a personal Neon development branch. That environment needs:
 
 ```dotenv
 DATABASE_URL="postgresql://...pooled Neon connection..."
@@ -67,3 +75,36 @@ Commit both `prisma/schema.prisma` and the generated migration. Migrations are a
 | `npm run db:studio`    | Open Prisma Studio                                 |
 
 Before handing off a change, run the tests, lint, typecheck, format check, and build.
+
+## Integration and browser checks
+
+Install the test browser into the checkout once:
+
+```bash
+# POSIX shell
+PLAYWRIGHT_BROWSERS_PATH=work/browsers npx playwright install chromium
+```
+
+```powershell
+# PowerShell
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) 'work/browsers'
+npx playwright install chromium
+```
+
+Then run:
+
+```bash
+npm test
+npm run test:integration
+npm run test:e2e
+npm run lint
+npm run typecheck
+npm run format:check
+npm run build
+```
+
+Each integration/browser command starts its own PostgreSQL cluster with random credentials and ports, applies all committed migrations and runs the seed twice. Fixture resets require the runner's exact local test URL. Neither command uses or resets the development database from `.env.local`. Stopped test clusters and failure artifacts remain in ignored `work/` for inspection.
+
+Browser tests run the real development app and consume the existing console-delivered magic links from their private server log. There is no testing login route or production authentication bypass. Run the browser suite separately from `next dev` or `next build` in this checkout because they share `.next`. Use a normal non-root OS account for embedded PostgreSQL.
+
+The `dated_workshops` migration deliberately deletes disposable legacy assignments and workshops before removing their obsolete statuses. Apply it only to disposable development/test data at this stage. Committed migration history is preserved; no legacy backfill is implemented.

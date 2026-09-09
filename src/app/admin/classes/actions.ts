@@ -22,8 +22,11 @@ function toNumber(value: unknown): number {
   return typeof value === 'string' && value !== '' ? Number(value) : NaN
 }
 
-async function getTeacherSchoolId(teacherId: string): Promise<string | null> {
-  const teacher = await prisma.user.findFirst({
+async function getTeacherSchoolId(
+  tx: Prisma.TransactionClient,
+  teacherId: string
+): Promise<string | null> {
+  const teacher = await tx.user.findFirst({
     where: {
       id: teacherId,
       role: 'TEACHER',
@@ -46,10 +49,21 @@ export async function createClassSection(formData: FormData) {
   if (!parsed.success) {
     redirect(`/admin/classes?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
-  const schoolId = await getTeacherSchoolId(parsed.data.teacherId)
-  if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
-
-  await prisma.classSection.create({ data: { ...parsed.data, schoolId } })
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
+        if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
+        await tx.classSection.create({ data: { ...parsed.data, schoolId } })
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      redirect('/admin/classes?error=Records+changed.+Reload+and+try+again.')
+    }
+    throw error
+  }
   revalidatePath('/admin/classes')
 }
 
@@ -72,15 +86,42 @@ export async function updateClassSection(formData: FormData) {
     )
   }
 
-  const schoolId = await getTeacherSchoolId(parsed.data.teacherId)
-  if (!schoolId) {
-    redirect(`/admin/classes/${id.data.id}/edit?error=Select+an+active+teacher+with+a+school.`)
+  try {
+    const error = await prisma.$transaction(
+      async (tx) => {
+        const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
+        if (!schoolId) return 'Select an active teacher with a school.'
+        const cls = await tx.classSection.findUnique({
+          where: { id: id.data.id },
+          include: { _count: { select: { workshops: true } } },
+        })
+        if (!cls) return 'Unknown class.'
+        if (
+          cls._count.workshops > 0 &&
+          (cls.teacherId !== parsed.data.teacherId || cls.schoolId !== schoolId)
+        ) {
+          return 'This class has workshop history. Create a new class for a different teacher or school.'
+        }
+        await tx.classSection.update({
+          where: { id: cls.id },
+          data: {
+            ...parsed.data,
+            subject: parsed.data.subject ?? null,
+            grade: parsed.data.grade ?? null,
+            schoolId,
+          },
+        })
+        return null
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+    if (error) redirect(`/admin/classes/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+      redirect(`/admin/classes/${id.data.id}/edit?error=Records+changed.+Reload+and+try+again.`)
+    }
+    throw error
   }
-
-  await prisma.classSection.update({
-    where: { id: id.data.id },
-    data: { ...parsed.data, schoolId },
-  })
   redirect('/admin/classes')
 }
 

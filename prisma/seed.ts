@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from '@prisma/client'
+import { shiftMonth, vancouverMonthKey, vancouverToUtc } from '../src/lib/time'
 
 const prisma = new PrismaClient()
 
@@ -140,6 +141,28 @@ async function main() {
         endMinute: definition.endMinute,
       },
     })
+
+    const month = shiftMonth(vancouverMonthKey(), 1)
+    const date = new Date(`${month}-01T12:00:00Z`)
+    while (date.getUTCDay() !== definition.dayOfWeek + 1) date.setUTCDate(date.getUTCDate() + 1)
+    const dateKey = date.toISOString().slice(0, 10)
+    const workshopId = slugId('seed-workshop', classId)
+    const workshopData = {
+      classSectionId: classId,
+      scheduledStart: vancouverToUtc(dateKey, definition.startMinute),
+      scheduledEnd: vancouverToUtc(dateKey, definition.endMinute),
+      minPAs: 1,
+      maxPAs: 3,
+      status: index === 0 ? ('DRAFT' as const) : ('PUBLISHED' as const),
+    }
+    await prisma.workshop.upsert({
+      where: { id: workshopId },
+      update: workshopData,
+      create: { id: workshopId, ...workshopData },
+    })
+    await prisma.assignment.deleteMany({ where: { workshopId } })
+    if (index !== 0)
+      await prisma.assignment.create({ data: { workshopId, paId: pas[0].id, status: 'PUBLISHED' } })
   }
 
   const availability = [[...ticks(1, 570, 690), ...ticks(2, 780, 900)], ticks(1, 570, 690)]
@@ -160,6 +183,9 @@ async function main() {
     ...pas.map((user) => ({ role: 'PA', email: user.email, name: user.name })),
   ])
   console.log('\nWithout AUTH_RESEND_KEY, magic links print in the dev server terminal.\n')
+  console.log(
+    `Example draft and published workshops: /admin/workshops?month=${shiftMonth(vancouverMonthKey(), 1)}`
+  )
 }
 
 main()

@@ -79,32 +79,74 @@ const offsetFormatter = new Intl.DateTimeFormat('en-US', {
 /**
  * Vancouver wall clock (ISO date + minute-of-day) → UTC instant.
  *
- * The UTC offset is probed at the same wall-clock time rather than hardcoded,
- * so PST/PDT is handled. The probe reads the offset one side of a DST
- * boundary; that's safe here because slots are school hours and BC's
- * transitions happen at 2 AM.
+ * Probe both sides of a transition and round-trip candidates. Reject missing
+ * and ambiguous local times instead of silently moving the workshop.
  */
 export function vancouverToUtc(dateString: string, minuteOfDay: number): Date {
-  const hours = Math.floor(minuteOfDay / 60)
-  const minutes = minuteOfDay % 60
-  const hh = String(hours).padStart(2, '0')
-  const mm = String(minutes).padStart(2, '0')
-
-  const probe = new Date(`${dateString}T${hh}:${mm}:00Z`)
-  const tzPart = offsetFormatter.formatToParts(probe).find((p) => p.type === 'timeZoneName')?.value // "GMT-7" / "GMT-8"
-
-  const offsetHours = tzPart?.startsWith('GMT') ? parseInt(tzPart.slice(3), 10) || 0 : 0
-
-  return new Date(
-    Date.UTC(
-      parseInt(dateString.slice(0, 4), 10),
-      parseInt(dateString.slice(5, 7), 10) - 1,
-      parseInt(dateString.slice(8, 10), 10),
-      hours - offsetHours,
-      minutes,
-      0
+  if (
+    !isCalendarDate(dateString) ||
+    !Number.isInteger(minuteOfDay) ||
+    minuteOfDay < 0 ||
+    minuteOfDay > 1440
+  ) {
+    throw new Error('Enter a valid Vancouver date and time.')
+  }
+  if (minuteOfDay === 1440) {
+    const tomorrow = new Date(`${dateString}T00:00:00Z`)
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+    return vancouverToUtc(tomorrow.toISOString().slice(0, 10), 0)
+  }
+  const wall = new Date(`${dateString}T00:00:00Z`).getTime() + minuteOfDay * 60_000
+  const offsets = new Set<number>()
+  for (const hours of [-36, 0, 36]) {
+    const zone = offsetFormatter
+      .formatToParts(new Date(wall + hours * 3_600_000))
+      .find((part) => part.type === 'timeZoneName')?.value
+    const match = zone?.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/)
+    if (!match) throw new Error('Unable to resolve the Vancouver time zone.')
+    offsets.add((match[1] === '+' ? 1 : -1) * (Number(match[2]) * 60 + Number(match[3] ?? 0)))
+  }
+  const candidates = [...offsets]
+    .map((offset) => new Date(wall - offset * 60_000))
+    .filter(
+      (candidate) =>
+        vancouverDateKey(candidate) === dateString &&
+        vancouverMinuteOfDay(candidate) === minuteOfDay
     )
+  if (candidates.length !== 1)
+    throw new Error(
+      'This Vancouver time is missing or ambiguous because of a clock change. Choose another time.'
+    )
+  return candidates[0]
+}
+
+export function isCalendarDate(value: string): boolean {
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    Number(value.slice(0, 4)) < 1000 ||
+    Number(value.slice(0, 4)) > 9998
   )
+    return false
+  const date = new Date(`${value}T00:00:00Z`)
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+}
+
+export function vancouverMonthKey(date = new Date()): string {
+  return vancouverDateKey(date).slice(0, 7)
+}
+
+export function shiftMonth(month: string, direction: -1 | 1): string {
+  if (!isCalendarDate(`${month}-01`)) throw new Error('Invalid month.')
+  const date = new Date(`${month}-01T00:00:00Z`)
+  date.setUTCMonth(date.getUTCMonth() + direction)
+  return date.toISOString().slice(0, 7)
+}
+
+export function vancouverMonthBounds(month: string): { start: Date; end: Date } {
+  return {
+    start: vancouverToUtc(`${month}-01`, 0),
+    end: vancouverToUtc(`${shiftMonth(month, 1)}-01`, 0),
+  }
 }
 
 const vancouverDateFormatter = new Intl.DateTimeFormat('en-CA', {

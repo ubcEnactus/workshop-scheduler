@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { requireRole, signOut } from '@/lib/auth'
 
 const SECTIONS = [
+  { href: '/admin/workshops', name: 'Workshops', blurb: 'Create and edit dated drafts by month.' },
   { href: '/admin/schools', name: 'Schools', blurb: 'Partner schools and their districts.' },
   { href: '/admin/teachers', name: 'Teachers', blurb: 'Teacher accounts and school assignments.' },
   { href: '/admin/pas', name: 'PAs', blurb: 'Instructor accounts and access.' },

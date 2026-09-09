@@ -74,17 +74,35 @@ export async function updateTeacher(formData: FormData) {
   }
 
   try {
-    await prisma.user.update({
-      where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        schoolId: parsed.data.schoolId,
+    const error = await prisma.$transaction(
+      async (tx) => {
+        const teacher = await tx.user.findFirst({
+          where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
+          include: { _count: { select: { classesTaught: true } } },
+        })
+        if (!teacher) return 'Unknown teacher.'
+        const school = await tx.school.findFirst({
+          where: { id: parsed.data.schoolId, deletedAt: null },
+        })
+        if (!school) return 'Select an active school.'
+        if (teacher.schoolId !== school.id && teacher._count.classesTaught > 0) {
+          return 'Reassign or remove this teacher’s classes before changing their school.'
+        }
+        await tx.user.update({
+          where: { id: teacher.id, deletedAt: null },
+          data: parsed.data,
+        })
+        return null
       },
-    })
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+    )
+    if (error) redirect(`/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
   } catch (err) {
     if (isDuplicateEmail(err)) {
       redirect(`/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(DUPLICATE_EMAIL)}`)
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
+      redirect(`/admin/teachers/${id.data.id}/edit?error=Records+changed.+Reload+and+try+again.`)
     }
     throw err
   }

@@ -27,6 +27,7 @@ export default [
       'out/**',
       'build/**',
       'node_modules/**',
+      'next-env.d.ts',
       'src/generated/**',
       'prisma/migrations/**',
     ],

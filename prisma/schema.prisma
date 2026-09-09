@@ -1,7 +1,7 @@
 // Workshop Scheduler — schema
 //
 // Identity (User, School) + NextAuth adapter tables, plus the scheduling
-// domain: Cycle, ClassSection, ClassMeeting, Workshop, Assignment.
+// domain: ClassSection, ClassMeeting, Workshop, Assignment.
 //
 // Conventions:
 // - cuid() ids
@@ -13,7 +13,7 @@
 // - Concrete instants (Workshop.scheduledStart/End) are stored UTC.
 //   Recurring weekly slots (ClassMeeting) are NOT instants: they store
 //   `dayOfWeek` + `startMinute`/`endMinute` as LOCAL wall-clock
-//   (America/Vancouver), combined with a cycle date to produce a UTC instant.
+//   (America/Vancouver), combined with an admin-selected date to produce a UTC instant.
 
 generator client {
   provider = "prisma-client-js"
@@ -94,30 +94,6 @@ model Availability {
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 
-enum CycleStatus {
-  DRAFT
-  OPEN
-  SCHEDULED
-  CLOSED
-}
-
-// A scheduling period (e.g. "Spring 2026"). Scopes availability + workshops
-// and bounds the recurring weekly slots.
-model Cycle {
-  id        String      @id @default(cuid())
-  name      String
-  startDate DateTime
-  endDate   DateTime
-  status    CycleStatus @default(DRAFT)
-
-  workshops Workshop[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([status])
-}
-
 // A teacher's class (one of the "1-3 classes" per school). Owns the meeting
 // times and ties teacher + school together.
 model ClassSection {
@@ -156,52 +132,49 @@ model ClassMeeting {
 }
 
 enum WorkshopStatus {
-  UNSCHEDULED
-  SCHEDULED
-  CONFIRMED
+  DRAFT
+  PUBLISHED
   COMPLETED
   CANCELLED
 }
 
-// The deliverable. Existence = a class requested a session this cycle. The
-// scheduler fills in scheduledStart/End (a ClassMeeting time) + Assignments.
+// An admin-created dated occurrence. Matching may only change assignments.
+// The Vancouver-local start date determines the planning month.
 model Workshop {
   id             String       @id @default(cuid())
-  cycleId        String
-  cycle          Cycle        @relation(fields: [cycleId], references: [id], onDelete: Cascade)
   classSectionId String
   classSection   ClassSection @relation(fields: [classSectionId], references: [id])
 
-  scheduledStart DateTime? // UTC; null until scheduled
-  scheduledEnd   DateTime?
+  scheduledStart DateTime // UTC; required before staffing
+  scheduledEnd   DateTime
   minPAs         Int            @default(1)
   maxPAs         Int            @default(3)
-  status         WorkshopStatus @default(UNSCHEDULED)
+  status         WorkshopStatus @default(DRAFT)
+  version        Int            @default(0)
 
   assignments Assignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([cycleId])
+  @@index([scheduledStart])
   @@index([classSectionId])
   @@index([status])
 }
 
 enum AssignmentStatus {
-  PROPOSED
-  CONFIRMED
-  DECLINED
+  DRAFT
+  PUBLISHED
 }
 
-// A PA assigned to a workshop.
+// A PA assigned by an admin. Drafts are private; published assignments are official.
 model Assignment {
   id         String           @id @default(cuid())
   workshopId String
   workshop   Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
   paId       String
   pa         User             @relation("PaAssignments", fields: [paId], references: [id])
-  status     AssignmentStatus @default(PROPOSED)
+  status     AssignmentStatus @default(DRAFT)
   assignedAt DateTime         @default(now())
 
   @@unique([workshopId, paId])
