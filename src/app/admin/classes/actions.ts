@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { scheduleTransaction } from '@/lib/scheduling/store'
 import {
   classMeetingIdSchema,
   classMeetingSchema,
@@ -50,14 +51,11 @@ export async function createClassSection(formData: FormData) {
     redirect(`/admin/classes?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
-        if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
-        await tx.classSection.create({ data: { ...parsed.data, schoolId } })
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    )
+    await scheduleTransaction(async (tx) => {
+      const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
+      if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
+      await tx.classSection.create({ data: { ...parsed.data, schoolId } })
+    })
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
       redirect('/admin/classes?error=Records+changed.+Reload+and+try+again.')
@@ -87,34 +85,31 @@ export async function updateClassSection(formData: FormData) {
   }
 
   try {
-    const error = await prisma.$transaction(
-      async (tx) => {
-        const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
-        if (!schoolId) return 'Select an active teacher with a school.'
-        const cls = await tx.classSection.findUnique({
-          where: { id: id.data.id },
-          include: { _count: { select: { workshops: true } } },
-        })
-        if (!cls) return 'Unknown class.'
-        if (
-          cls._count.workshops > 0 &&
-          (cls.teacherId !== parsed.data.teacherId || cls.schoolId !== schoolId)
-        ) {
-          return 'This class has workshop history. Create a new class for a different teacher or school.'
-        }
-        await tx.classSection.update({
-          where: { id: cls.id },
-          data: {
-            ...parsed.data,
-            subject: parsed.data.subject ?? null,
-            grade: parsed.data.grade ?? null,
-            schoolId,
-          },
-        })
-        return null
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    )
+    const error = await scheduleTransaction(async (tx) => {
+      const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
+      if (!schoolId) return 'Select an active teacher with a school.'
+      const cls = await tx.classSection.findUnique({
+        where: { id: id.data.id },
+        include: { _count: { select: { workshops: true } } },
+      })
+      if (!cls) return 'Unknown class.'
+      if (
+        cls._count.workshops > 0 &&
+        (cls.teacherId !== parsed.data.teacherId || cls.schoolId !== schoolId)
+      ) {
+        return 'This class has workshop history. Create a new class for a different teacher or school.'
+      }
+      await tx.classSection.update({
+        where: { id: cls.id },
+        data: {
+          ...parsed.data,
+          subject: parsed.data.subject ?? null,
+          grade: parsed.data.grade ?? null,
+          schoolId,
+        },
+      })
+      return null
+    })
     if (error) redirect(`/admin/classes/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
@@ -133,7 +128,7 @@ export async function deleteClassSection(formData: FormData) {
   }
 
   try {
-    await prisma.classSection.delete({ where: { id: id.data.id } })
+    await scheduleTransaction((tx) => tx.classSection.delete({ where: { id: id.data.id } }))
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
       redirect(
@@ -199,6 +194,8 @@ export async function deleteMeeting(formData: FormData) {
   if (!parsed.success) {
     redirect('/admin/classes?error=Unknown+meeting+time.')
   }
-  const meeting = await prisma.classMeeting.delete({ where: { id: parsed.data.id } })
+  const meeting = await scheduleTransaction((tx) =>
+    tx.classMeeting.delete({ where: { id: parsed.data.id } })
+  )
   revalidatePath(`/admin/classes/${meeting.classSectionId}/edit`)
 }

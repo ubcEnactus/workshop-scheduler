@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/db'
+import { scheduleTransaction } from '@/lib/scheduling/store'
 
 /**
  * Replace a user's entire weekly availability with `slots`.
@@ -16,11 +16,11 @@ export async function replaceAvailability(
   userId: string,
   slots: { dayOfWeek: number; startMin: number }[]
 ): Promise<void> {
-  await prisma.$transaction([
-    prisma.availability.deleteMany({ where: { userId } }),
-    prisma.availability.createMany({
+  await scheduleTransaction(async (tx) => {
+    await tx.availability.deleteMany({ where: { userId } })
+    await tx.availability.createMany({
       data: slots.map((s) => ({ userId, ...s })),
       skipDuplicates: true,
-    }),
-  ])
+    })
+  })
 }

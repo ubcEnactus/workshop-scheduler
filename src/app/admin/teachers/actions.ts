@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { scheduleTransaction } from '@/lib/scheduling/store'
 import { teacherSchema, teacherIdSchema } from '@/lib/schemas/teachers'
 
 const DUPLICATE_EMAIL = 'That email is already in use by another account.'
@@ -74,28 +75,25 @@ export async function updateTeacher(formData: FormData) {
   }
 
   try {
-    const error = await prisma.$transaction(
-      async (tx) => {
-        const teacher = await tx.user.findFirst({
-          where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
-          include: { _count: { select: { classesTaught: true } } },
-        })
-        if (!teacher) return 'Unknown teacher.'
-        const school = await tx.school.findFirst({
-          where: { id: parsed.data.schoolId, deletedAt: null },
-        })
-        if (!school) return 'Select an active school.'
-        if (teacher.schoolId !== school.id && teacher._count.classesTaught > 0) {
-          return 'Reassign or remove this teacher’s classes before changing their school.'
-        }
-        await tx.user.update({
-          where: { id: teacher.id, deletedAt: null },
-          data: parsed.data,
-        })
-        return null
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    )
+    const error = await scheduleTransaction(async (tx) => {
+      const teacher = await tx.user.findFirst({
+        where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
+        include: { _count: { select: { classesTaught: true } } },
+      })
+      if (!teacher) return 'Unknown teacher.'
+      const school = await tx.school.findFirst({
+        where: { id: parsed.data.schoolId, deletedAt: null },
+      })
+      if (!school) return 'Select an active school.'
+      if (teacher.schoolId !== school.id && teacher._count.classesTaught > 0) {
+        return 'Reassign or remove this teacher’s classes before changing their school.'
+      }
+      await tx.user.update({
+        where: { id: teacher.id, deletedAt: null },
+        data: parsed.data,
+      })
+      return null
+    })
     if (error) redirect(`/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
   } catch (err) {
     if (isDuplicateEmail(err)) {

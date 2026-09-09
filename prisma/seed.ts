@@ -49,6 +49,11 @@ function ticks(dayOfWeek: number, startMin: number, endMin: number) {
 }
 
 async function main() {
+  await prisma.schedulingSettings.upsert({
+    where: { id: 1 },
+    create: { id: 1, minimumGapMinutes: 60 },
+    update: { minimumGapMinutes: 60 },
+  })
   console.log('Seeding core demo data…')
 
   const schools = await Promise.all(
@@ -168,6 +173,12 @@ async function main() {
   const availability = [[...ticks(1, 570, 690), ...ticks(2, 780, 900)], ticks(1, 570, 690)]
 
   for (let index = 0; index < pas.length; index++) {
+    const month = shiftMonth(vancouverMonthKey(), 1)
+    await prisma.monthlyPAQuota.upsert({
+      where: { paId_month: { paId: pas[index].id, month } },
+      create: { paId: pas[index].id, month, quota: 4 },
+      update: { quota: 4 },
+    })
     await prisma.$transaction([
       prisma.availability.deleteMany({ where: { userId: pas[index].id } }),
       prisma.availability.createMany({

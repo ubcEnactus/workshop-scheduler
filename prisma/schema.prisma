@@ -50,6 +50,7 @@ model User {
   // Scheduling domain (back-relations)
   classesTaught ClassSection[] @relation("TeacherClasses") // role = TEACHER
   assignments   Assignment[]   @relation("PaAssignments") // role = PA
+  monthlyQuotas MonthlyPAQuota[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -151,6 +152,7 @@ model Workshop {
   maxPAs         Int            @default(3)
   status         WorkshopStatus @default(DRAFT)
   version        Int            @default(0)
+  locked         Boolean        @default(false)
 
   assignments Assignment[]
 
@@ -167,6 +169,28 @@ enum AssignmentStatus {
   PUBLISHED
 }
 
+enum AssignmentSource {
+  MANUAL
+  AUTOMATIC
+}
+
+model MonthlyPAQuota {
+  id String @id @default(cuid())
+  paId String
+  pa User @relation(fields: [paId], references: [id], onDelete: Cascade)
+  month String
+  quota Int
+  @@unique([paId, month])
+  @@index([month])
+}
+
+// The singleton also serializes scheduling writes across workshops and PAs.
+model SchedulingSettings {
+  id Int @id @default(1)
+  minimumGapMinutes Int?
+  revision Int @default(0)
+}
+
 // A PA assigned by an admin. Drafts are private; published assignments are official.
 model Assignment {
   id         String           @id @default(cuid())
@@ -175,6 +199,7 @@ model Assignment {
   paId       String
   pa         User             @relation("PaAssignments", fields: [paId], references: [id])
   status     AssignmentStatus @default(DRAFT)
+  source     AssignmentSource @default(MANUAL)
   assignedAt DateTime         @default(now())
 
   @@unique([workshopId, paId])

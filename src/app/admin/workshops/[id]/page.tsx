@@ -11,6 +11,8 @@ import {
   vancouverMonthKey,
 } from '@/lib/time'
 import { updateWorkshop } from '../actions'
+import { loadSchedule } from '@/lib/scheduling/store'
+import { WorkshopStaffing } from '@/components/workshop-staffing'
 
 function clock(date: Date) {
   const minute = vancouverMinuteOfDay(date)
@@ -45,6 +47,8 @@ export default async function WorkshopDetail({
     orderBy: { name: 'asc' },
   })
   const month = vancouverMonthKey(workshop.scheduledStart)
+  const snapshot = await loadSchedule(prisma)
+  const staffingWorkshop = snapshot.workshops.find((w) => w.id === id)
   return (
     <main className="mx-auto w-full max-w-2xl space-y-6 px-6 py-12">
       <Link href={`/admin/workshops?month=${month}`} className="text-sm underline">
@@ -87,6 +91,7 @@ export default async function WorkshopDetail({
       ) : (
         <p>Only unstaffed draft workshops can be edited here.</p>
       )}
+      {staffingWorkshop && <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} />}
     </main>
   )
 }

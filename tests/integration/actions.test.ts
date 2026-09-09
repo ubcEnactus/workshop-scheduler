@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { prisma } from '../../src/lib/db'
 import { form, resetFixtures, workshopForm } from '../fixtures'
 import { vancouverMonthBounds, vancouverToUtc } from '../../src/lib/time'
@@ -23,15 +23,6 @@ import * as workshops from '../../src/app/admin/workshops/actions'
 import { saveAvailability } from '../../src/app/pa/availability/actions'
 
 let fixtures: Awaited<ReturnType<typeof resetFixtures>>
-beforeAll(async () => {
-  // with-test-db runs the real seed twice before fixtures replace it.
-  expect(await prisma.workshop.count()).toBe(2)
-  expect(await prisma.assignment.count()).toBe(1)
-  const tables = await prisma.$queryRaw<
-    { name: string | null }[]
-  >`SELECT to_regclass('public."Cycle"')::text AS name`
-  expect(tables[0].name).toBeNull()
-})
 beforeEach(async () => {
   fixtures = await resetFixtures()
   sessionAuth.mockResolvedValue({ user: { id: fixtures.admin.id } })

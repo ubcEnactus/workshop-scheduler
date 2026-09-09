@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation'
 
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { scheduleTransaction } from '@/lib/scheduling/store'
 import { paIdSchema, paSchema } from '@/lib/schemas/pas'
 
 const DUPLICATE_EMAIL = 'That email is already in use by another account.'
@@ -71,23 +72,25 @@ export async function softDeletePA(formData: FormData) {
   const parsed = paIdSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) redirect('/admin/pas?error=Unknown+PA.')
 
-  const futureAssignment = await prisma.assignment.findFirst({
-    where: {
-      paId: parsed.data.id,
-      workshop: {
-        scheduledStart: { gte: new Date() },
-        status: { notIn: ['CANCELLED', 'COMPLETED'] },
+  await scheduleTransaction(async (tx) => {
+    const futureAssignment = await tx.assignment.findFirst({
+      where: {
+        paId: parsed.data.id,
+        workshop: {
+          scheduledStart: { gte: new Date() },
+          status: { notIn: ['CANCELLED', 'COMPLETED'] },
+        },
       },
-    },
-    select: { id: true },
-  })
-  if (futureAssignment) {
-    redirect('/admin/pas?error=Replace+this+PA%27s+future+assignments+before+removing+them.')
-  }
+      select: { id: true },
+    })
+    if (futureAssignment) {
+      redirect('/admin/pas?error=Replace+this+PA%27s+future+assignments+before+removing+them.')
+    }
 
-  await prisma.user.update({
-    where: { id: parsed.data.id, role: 'PA', deletedAt: null },
-    data: { deletedAt: new Date() },
+    await tx.user.update({
+      where: { id: parsed.data.id, role: 'PA', deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
   })
   revalidatePath('/admin/pas')
 }

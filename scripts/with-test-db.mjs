@@ -26,6 +26,7 @@ try {
   await runNode('node_modules/tsx/dist/cli.mjs', ['prisma/seed.ts'])
   await runNode('node_modules/tsx/dist/cli.mjs', ['prisma/seed.ts'])
   if (kind === 'integration') {
+    await runNode('node_modules/tsx/dist/cli.mjs', ['tests/verify-seed.ts'])
     await runNode('node_modules/vitest/vitest.mjs', [
       'run',
       '--config',

@@ -4,17 +4,13 @@ import { Prisma } from '@prisma/client'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
-import { prisma } from '@/lib/db'
+import { monthSchema, workshopSchema, workshopVersionSchema } from '@/lib/schemas/workshops'
+import { vancouverMonthKey } from '@/lib/time'
 import {
-  clockMinutes,
-  monthSchema,
-  workshopSchema,
-  workshopVersionSchema,
-  type WorkshopInput,
-} from '@/lib/schemas/workshops'
-import { vancouverMonthKey, vancouverToUtc } from '@/lib/time'
-
-class WorkshopError extends Error {}
+  scheduleTransaction,
+  validateSlot,
+  SchedulingError as WorkshopError,
+} from '@/lib/scheduling/store'
 
 function readInput(form: FormData) {
   return workshopSchema.safeParse(
@@ -25,53 +21,6 @@ function readInput(form: FormData) {
       ])
     )
   )
-}
-
-async function validateSlot(tx: Prisma.TransactionClient, data: WorkshopInput, excludeId?: string) {
-  const cls = await tx.classSection.findFirst({
-    where: {
-      id: data.classSectionId,
-      teacher: { role: 'TEACHER', deletedAt: null },
-      school: { deletedAt: null },
-    },
-    include: { meetings: true, teacher: { select: { schoolId: true } } },
-  })
-  if (!cls || cls.teacher.schoolId !== cls.schoolId)
-    throw new WorkshopError('Select an active class with a teacher at its school.')
-  const startMinute = clockMinutes(data.startTime)
-  const endMinute = clockMinutes(data.endTime)
-  const dayOfWeek = new Date(`${data.date}T12:00:00Z`).getUTCDay() - 1
-  if (
-    !cls.meetings.some(
-      (block) =>
-        block.dayOfWeek === dayOfWeek &&
-        block.startMinute <= startMinute &&
-        block.endMinute >= endMinute
-    )
-  ) {
-    throw new WorkshopError('The full workshop must fit inside one class hosting block.')
-  }
-  const scheduledStart = vancouverToUtc(data.date, startMinute)
-  const scheduledEnd = vancouverToUtc(data.date, endMinute)
-  const conflict = await tx.workshop.findFirst({
-    where: {
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-      status: { not: 'CANCELLED' },
-      scheduledStart: { lt: scheduledEnd },
-      scheduledEnd: { gt: scheduledStart },
-      OR: [{ classSectionId: cls.id }, { classSection: { teacherId: cls.teacherId } }],
-    },
-    select: { id: true },
-  })
-  if (conflict)
-    throw new WorkshopError('This class or teacher already has an overlapping workshop.')
-  return {
-    classSectionId: cls.id,
-    scheduledStart,
-    scheduledEnd,
-    minPAs: data.minPAs,
-    maxPAs: data.maxPAs,
-  }
 }
 
 function handleError(error: unknown, target: string): never {
@@ -94,13 +43,10 @@ export async function createWorkshop(formData: FormData) {
     )
   let workshop
   try {
-    workshop = await prisma.$transaction(
-      async (tx) => {
-        const data = await validateSlot(tx, parsed.data)
-        return tx.workshop.create({ data })
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    )
+    workshop = await scheduleTransaction(async (tx) => {
+      const data = await validateSlot(tx, parsed.data)
+      return tx.workshop.create({ data })
+    })
   } catch (error) {
     if (
       error instanceof WorkshopError ||
@@ -131,27 +77,24 @@ export async function updateWorkshop(formData: FormData) {
   if (!parsed.success)
     redirect(`${target}?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        const existing = await tx.workshop.findUnique({
-          where: { id: identity.data.id },
-          include: { _count: { select: { assignments: true } } },
-        })
-        if (!existing) throw new WorkshopError('Unknown workshop.')
-        if (existing.status !== 'DRAFT' || existing._count.assignments > 0)
-          throw new WorkshopError('Only unstaffed draft workshops can be edited here.')
-        if (existing.version !== identity.data.version)
-          throw new WorkshopError('This workshop changed. Reload before editing it again.')
-        const data = await validateSlot(tx, parsed.data, existing.id)
-        const result = await tx.workshop.updateMany({
-          where: { id: existing.id, version: identity.data.version, status: 'DRAFT' },
-          data: { ...data, version: { increment: 1 } },
-        })
-        if (result.count !== 1)
-          throw new WorkshopError('This workshop changed. Reload before editing it again.')
-      },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
-    )
+    await scheduleTransaction(async (tx) => {
+      const existing = await tx.workshop.findUnique({
+        where: { id: identity.data.id },
+        include: { _count: { select: { assignments: true } } },
+      })
+      if (!existing) throw new WorkshopError('Unknown workshop.')
+      if (existing.status !== 'DRAFT' || existing._count.assignments > 0)
+        throw new WorkshopError('Only unstaffed draft workshops can be edited here.')
+      if (existing.version !== identity.data.version)
+        throw new WorkshopError('This workshop changed. Reload before editing it again.')
+      const data = await validateSlot(tx, parsed.data, existing.id)
+      const result = await tx.workshop.updateMany({
+        where: { id: existing.id, version: identity.data.version, status: 'DRAFT' },
+        data: { ...data, locked: true, version: { increment: 1 } },
+      })
+      if (result.count !== 1)
+        throw new WorkshopError('This workshop changed. Reload before editing it again.')
+    })
   } catch (error) {
     handleError(error, target)
   }

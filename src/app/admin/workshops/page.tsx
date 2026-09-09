@@ -59,6 +59,9 @@ export default async function WorkshopsPage({
           Admin home
         </Link>
         <h1 className="mt-4 text-3xl font-semibold">Workshops</h1>
+        <Link href={'/admin/staffing?month=' + month} className="mt-3 block underline">
+          PA quotas and assignment gap
+        </Link>
         <p className="mt-2 text-sm text-zinc-600">
           Plan dated drafts, then review each workshop. Drafts are private to admins.
         </p>
@@ -140,13 +143,19 @@ export default async function WorkshopsPage({
             <caption className="sr-only">Workshops for {month}, America/Vancouver</caption>
             <thead className="border-b">
               <tr>
-                {['Class', 'School', 'Vancouver date/time', 'Staffing', 'Status', 'Editing'].map(
-                  (label) => (
-                    <th key={label} scope="col" className="p-3">
-                      {label}
-                    </th>
-                  )
-                )}
+                {[
+                  'Class',
+                  'School',
+                  'Vancouver date/time',
+                  'Staffing',
+                  'Status',
+                  'Editing',
+                  'Lock',
+                ].map((label) => (
+                  <th key={label} scope="col" className="p-3">
+                    {label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -170,6 +179,9 @@ export default async function WorkshopsPage({
                     {workshop.status === 'DRAFT' && workshop._count.assignments === 0
                       ? 'Editable'
                       : 'Protected'}
+                  </td>
+                  <td className="p-3">
+                    {workshop.locked || workshop.status !== 'DRAFT' ? 'Locked' : 'Unlocked'}
                   </td>
                 </tr>
               ))}
