@@ -22,6 +22,7 @@ export async function resetFixtures() {
     prisma.account.deleteMany(),
     prisma.assignment.deleteMany(),
     prisma.workshop.deleteMany(),
+    prisma.workshopBatch.deleteMany(),
     prisma.classMeeting.deleteMany(),
     prisma.availability.deleteMany(),
     prisma.classSection.deleteMany(),

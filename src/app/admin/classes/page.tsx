@@ -1,3 +1,4 @@
+import { ClassDefaults } from '@/components/class-defaults'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { FormError } from '@/components/form-error'
@@ -68,6 +69,7 @@ export default async function ClassesPage({
             ))}
           </select>
         </div>
+        <ClassDefaults />
         <button
           type="submit"
           className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"

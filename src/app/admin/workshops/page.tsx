@@ -59,6 +59,9 @@ export default async function WorkshopsPage({
           Admin home
         </Link>
         <h1 className="mt-4 text-3xl font-semibold">Workshops</h1>
+        <Link href={'/admin/workshops/plan?month=' + month} className="mt-3 block underline">
+          Plan monthly workshops
+        </Link>
         <Link href={'/admin/staffing?month=' + month} className="mt-3 block underline">
           PA quotas and assignment gap
         </Link>

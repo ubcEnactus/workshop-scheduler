@@ -1,3 +1,4 @@
+import { ClassDefaults } from '@/components/class-defaults'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { notFound } from 'next/navigation'
@@ -95,6 +96,7 @@ export default async function EditClassPage({
               ))}
             </select>
           </div>
+          <ClassDefaults initial={cls} />
           <div className="flex items-center gap-4">
             <button
               type="submit"

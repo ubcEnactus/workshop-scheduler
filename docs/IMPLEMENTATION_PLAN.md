@@ -32,7 +32,7 @@ Final verification against the implementation:
 
 Desktop and 390px-wide workshop screenshots were inspected; the table scrolls within the page and forms remain usable. `README.md` documents setup and repeatable checks. The initial dependency installation reported three existing high-severity advisories; dependency remediation remains part of the pre-launch review in iteration 6.
 
-Iteration 2 remains next: quotas, assignment gaps, manual staffing, locks and publishing actions are not implemented. The current “Editing” column reports whether an unstaffed draft is editable; it is not a user-controlled lock. The published seed demonstrates compatible read-only views, not a completed staffing/publishing workflow. Select-all and batch slot creation remain in iteration 3.
+Iteration 2 completed in commit `5219eeb`: explicit monthly quotas and a configurable positive assignment gap, shared eligibility checking, protected manual assignment/removal, draft locking, and atomic publication. Scheduling transactions serialize workshop/PA/availability/quota changes; stale workshop versions are rejected. Verified with 37 unit tests, 42 PostgreSQL tests, 8 browser tests, lint, typecheck, format check and build. The browser suite covers the complete real-login staffing/publication flow and draft privacy. Iteration 3 is next.
 
 ## Flow and interface
 
@@ -62,13 +62,13 @@ Teachers see their school's published workshops; PAs see their own. Draft work n
 
 **Done when:** the committed migration chain and updated seed build a working database from scratch. An admin creates and edits a dated draft, reloads it from the database, and navigates months correctly. Test date validation and Vancouver month/DST boundaries; legacy-data upgrade fixtures are unnecessary.
 
-## 2. Complete the first manual end-to-end flow
+## 2. Complete the first manual end-to-end flow — complete
 
-- Add monthly PA quotas keyed by PA and `YYYY-MM`, plus an admin-configured minimum assignment gap. Show assigned-versus-quota counts. Missing quota means ineligible until configured; do not silently assume four workshops.
-- Build one shared eligibility checker for full PA availability, active PA role, staffing capacity, overlap, gap, and quota. Count work across all classes and schools in the month, including completed work; exclude cancelled and replaced assignments. Check neighboring assignments outside the selected month when testing the gap.
-- Add manual assign/remove, workshop locking, and explicit publish actions. Manual changes are protected by default. Use a workshop-level lock initially; published workshops are always protected from matching.
-- Publish only eligible, sufficiently staffed workshops. Recheck state and constraints inside the write transaction. Add a version check and concurrency protection so simultaneous admin actions cannot create conflicting assignments.
-- Update the PA and teacher views to expose published work only. The workshop lifecycle should be authoritative, with assignment visibility kept consistent transactionally.
+- [x] Add monthly PA quotas keyed by PA and `YYYY-MM`, plus an admin-configured minimum assignment gap. Show assigned-versus-quota counts. Missing quota means ineligible until configured; do not silently assume four workshops.
+- [x] Build one shared eligibility checker for full PA availability, active PA role, staffing capacity, overlap, gap, and quota. Count work across all classes and schools in the month, including completed work; exclude cancelled and replaced assignments. Check neighboring assignments outside the selected month when testing the gap.
+- [x] Add manual assign/remove, workshop locking, and explicit publish actions. Manual changes are protected by default. Use a workshop-level lock initially; published workshops are always protected from matching.
+- [x] Publish only eligible, sufficiently staffed workshops. Recheck state and constraints inside the write transaction. Add a version check and concurrency protection so simultaneous admin actions cannot create conflicting assignments.
+- [x] Update the PA and teacher views to expose published work only. The workshop lifecycle should be authoritative, with assignment visibility kept consistent transactionally.
 
 **Done when:** admin creates a slot, manually staffs and publishes it; the assigned PA and correct school's teachers see it; everyone else cannot. A browser test covers this complete path and verifies draft privacy.
 

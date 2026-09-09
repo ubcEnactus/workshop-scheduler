@@ -46,6 +46,10 @@ export async function createClassSection(formData: FormData) {
     subject: formData.get('subject') || undefined,
     grade: formData.get('grade') || undefined,
     teacherId: formData.get('teacherId'),
+    monthlyCadence: formData.get('monthlyCadence') ?? undefined,
+    defaultDurationMinutes: formData.get('defaultDurationMinutes') ?? undefined,
+    defaultMinPAs: formData.get('defaultMinPAs') ?? undefined,
+    defaultMaxPAs: formData.get('defaultMaxPAs') ?? undefined,
   })
   if (!parsed.success) {
     redirect(`/admin/classes?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
@@ -77,6 +81,10 @@ export async function updateClassSection(formData: FormData) {
     subject: formData.get('subject') || undefined,
     grade: formData.get('grade') || undefined,
     teacherId: formData.get('teacherId'),
+    monthlyCadence: formData.get('monthlyCadence') ?? undefined,
+    defaultDurationMinutes: formData.get('defaultDurationMinutes') ?? undefined,
+    defaultMinPAs: formData.get('defaultMinPAs') ?? undefined,
+    defaultMaxPAs: formData.get('defaultMaxPAs') ?? undefined,
   })
   if (!parsed.success) {
     redirect(

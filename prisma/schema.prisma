@@ -102,6 +102,10 @@ model ClassSection {
   name    String // "Period 3 Biology"
   subject String?
   grade   String?
+  monthlyCadence Int @default(1)
+  defaultDurationMinutes Int @default(60)
+  defaultMinPAs Int @default(1)
+  defaultMaxPAs Int @default(3)
 
   teacherId String
   teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
@@ -145,6 +149,8 @@ model Workshop {
   id             String       @id @default(cuid())
   classSectionId String
   classSection   ClassSection @relation(fields: [classSectionId], references: [id])
+  batchId String?
+  batch WorkshopBatch? @relation(fields: [batchId], references: [id])
 
   scheduledStart DateTime // UTC; required before staffing
   scheduledEnd   DateTime
@@ -162,6 +168,16 @@ model Workshop {
   @@index([scheduledStart])
   @@index([classSectionId])
   @@index([status])
+}
+
+model WorkshopBatch {
+  id String @id @default(cuid())
+  requestKey String @unique
+  actorId String
+  month String
+  payloadHash String
+  createdAt DateTime @default(now())
+  workshops Workshop[]
 }
 
 enum AssignmentStatus {
