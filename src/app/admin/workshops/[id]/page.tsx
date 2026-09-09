@@ -13,6 +13,8 @@ import {
 import { updateWorkshop } from '../actions'
 import { loadSchedule } from '@/lib/scheduling/store'
 import { WorkshopStaffing } from '@/components/workshop-staffing'
+import { WorkshopChanges } from '@/components/workshop-changes'
+import { ChangeSummary } from '@/components/change-summary'
 
 function clock(date: Date) {
   const minute = vancouverMinuteOfDay(date)
@@ -34,6 +36,7 @@ export default async function WorkshopDetail({
     include: {
       classSection: { include: { school: true } },
       _count: { select: { assignments: true } },
+      events: { orderBy: { createdAt: 'desc' } },
     },
   })
   if (!workshop) notFound()
@@ -92,6 +95,25 @@ export default async function WorkshopDetail({
         <p>Only unstaffed draft workshops can be edited here.</p>
       )}
       {staffingWorkshop && <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} />}
+      {staffingWorkshop && <WorkshopChanges workshop={staffingWorkshop} snapshot={snapshot} />}
+      <section className="space-y-4 border-t pt-6">
+        <h2 className="text-xl font-semibold">Workshop history</h2>
+        {workshop.events.length === 0 ? (
+          <p>No recorded changes.</p>
+        ) : (
+          workshop.events.map((event) => (
+            <article key={event.id} className="space-y-3 rounded border p-4">
+              <p className="font-medium">
+                {event.kind.toLowerCase()} · {event.actorName}
+              </p>
+              <p>
+                {formatInstantRange(event.createdAt, event.createdAt)} · {event.reason}
+              </p>
+              <ChangeSummary before={event.before} after={event.after} />
+            </article>
+          ))
+        )}
+      </section>
     </main>
   )
 }

@@ -6,6 +6,7 @@ import { gapSchema, quotaSchema, staffSchema, lockSchema } from '@/lib/schemas/s
 import { workshopVersionSchema } from '@/lib/schemas/workshops'
 import { scheduleTransaction, loadSchedule, SchedulingError } from '@/lib/scheduling/store'
 import { eligibility, staffingProblems } from '@/lib/scheduling/eligibility'
+import { auditState } from '@/lib/scheduling/changes'
 
 function fail(error: unknown, target: string): never {
   if (error instanceof SchedulingError)
@@ -125,7 +126,7 @@ export async function setWorkshopLock(formData: FormData) {
   redirect('/admin/workshops/' + id)
 }
 export async function publishWorkshop(formData: FormData) {
-  await requireRole('ADMIN')
+  const actor = await requireRole('ADMIN')
   const parsed = workshopVersionSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success) redirect('/admin/workshops?error=Invalid+publication+request.')
   const { id, version } = parsed.data
@@ -142,7 +143,25 @@ export async function publishWorkshop(formData: FormData) {
       await tx.assignment.updateMany({ where: { workshopId: id }, data: { status: 'PUBLISHED' } })
       await tx.workshop.update({
         where: { id },
-        data: { status: 'PUBLISHED', locked: true, version: { increment: 1 } },
+        data: {
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          locked: true,
+          version: { increment: 1 },
+        },
+      })
+      await tx.workshopEvent.create({
+        data: {
+          workshopId: id,
+          actorId: actor.id,
+          actorName: actor.name ?? actor.email,
+          kind: 'PUBLISH',
+          reason: 'Workshop published.',
+          before: auditState(workshop, snapshot),
+          after: auditState({ ...workshop, status: 'PUBLISHED' }, snapshot),
+          wasPublished: true,
+          affectedPAIds: workshop.assignments.map((a) => a.paId),
+        },
       })
     })
   } catch (error) {

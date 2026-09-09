@@ -6,6 +6,8 @@ import { WorkshopForm } from '@/components/workshop-form'
 import { monthSchema } from '@/lib/schemas/workshops'
 import { formatInstantRange, shiftMonth, vancouverMonthBounds, vancouverMonthKey } from '@/lib/time'
 import { createWorkshop } from './actions'
+import { loadSchedule } from '@/lib/scheduling/store'
+import { staffingProblems } from '@/lib/scheduling/eligibility'
 
 export default async function WorkshopsPage({
   searchParams,
@@ -52,6 +54,7 @@ export default async function WorkshopsPage({
   ])
   const monthHref = (value: string) =>
     `/admin/workshops?${new URLSearchParams({ month: value, ...(query.schoolId ? { schoolId: query.schoolId } : {}), ...(query.classSectionId ? { classSectionId: query.classSectionId } : {}) })}`
+  const snapshot = await loadSchedule(prisma)
   return (
     <main className="mx-auto w-full max-w-5xl space-y-8 px-6 py-12">
       <header>
@@ -157,6 +160,7 @@ export default async function WorkshopsPage({
                   'Status',
                   'Editing',
                   'Lock',
+                  'Review',
                 ].map((label) => (
                   <th key={label} scope="col" className="p-3">
                     {label}
@@ -188,6 +192,15 @@ export default async function WorkshopsPage({
                   </td>
                   <td className="p-3">
                     {workshop.locked || workshop.status !== 'DRAFT' ? 'Locked' : 'Unlocked'}
+                  </td>
+                  <td className="p-3">
+                    {workshop.status === 'PUBLISHED' &&
+                    workshop.scheduledEnd.getTime() >= Date.now() &&
+                    snapshot.workshops.some(
+                      (w) => w.id === workshop.id && staffingProblems(snapshot, w).length > 0
+                    )
+                      ? 'Needs review — open workshop'
+                      : '—'}
                   </td>
                 </tr>
               ))}

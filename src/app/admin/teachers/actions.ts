@@ -32,18 +32,18 @@ export async function createTeacher(formData: FormData) {
   if (!parsed.success) {
     redirect(`/admin/teachers?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
-  if (!(await isActiveSchool(parsed.data.schoolId))) {
-    redirect('/admin/teachers?error=Select+an+active+school.')
-  }
-
   try {
-    await prisma.user.create({
-      data: {
-        name: parsed.data.name,
-        email: parsed.data.email,
-        role: 'TEACHER',
-        schoolId: parsed.data.schoolId,
-      },
+    await scheduleTransaction(async (tx) => {
+      if (!(await tx.school.findFirst({ where: { id: parsed.data.schoolId, deletedAt: null } })))
+        redirect('/admin/teachers?error=Select+an+active+school.')
+      await tx.user.create({
+        data: {
+          name: parsed.data.name,
+          email: parsed.data.email,
+          role: 'TEACHER',
+          schoolId: parsed.data.schoolId,
+        },
+      })
     })
   } catch (err) {
     if (isDuplicateEmail(err))
@@ -113,16 +113,18 @@ export async function softDeleteTeacher(formData: FormData) {
   if (!id.success) {
     redirect('/admin/teachers?error=Unknown+teacher.')
   }
-  const assignedClass = await prisma.classSection.findFirst({
-    where: { teacherId: id.data.id },
-    select: { id: true },
-  })
-  if (assignedClass) {
-    redirect('/admin/teachers?error=Reassign+this+teacher%27s+classes+before+removing+them.')
-  }
-  await prisma.user.update({
-    where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
-    data: { deletedAt: new Date() },
+  await scheduleTransaction(async (tx) => {
+    const assignedClass = await tx.classSection.findFirst({
+      where: { teacherId: id.data.id },
+      select: { id: true },
+    })
+    if (assignedClass) {
+      redirect('/admin/teachers?error=Reassign+this+teacher%27s+classes+before+removing+them.')
+    }
+    await tx.user.update({
+      where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
   })
   revalidatePath('/admin/teachers')
 }

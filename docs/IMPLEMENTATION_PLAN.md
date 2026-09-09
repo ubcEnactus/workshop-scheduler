@@ -34,6 +34,8 @@ Desktop and 390px-wide workshop screenshots were inspected; the table scrolls wi
 
 Iteration 2 completed in commit `5219eeb`: explicit monthly quotas and a configurable positive assignment gap, shared eligibility checking, protected manual assignment/removal, draft locking, and atomic publication. Scheduling transactions serialize workshop/PA/availability/quota changes; stale workshop versions are rejected. Verified with 37 unit tests, 42 PostgreSQL tests, 8 browser tests, lint, typecheck, format check and build. The browser suite covers the complete real-login staffing/publication flow and draft privacy. Iteration 3 completed in commit `455b3b4`: per-class cadence and defaults, selected-class monthly planning, explicit date/time entry, prospective target changes and transactional batch retries. Verified with 37 unit, 46 PostgreSQL and 9 browser tests, lint, typecheck, format check and build.
 
+Iteration 4 completed in commit `9d9dfae`: deterministic quota-aware staffing, full schedule eligibility, protected work, 15-minute previews, stale-input detection and serialized atomic apply. Verified with 42 unit and 51 PostgreSQL tests, the new browser matching/adjustment/rerun/publication flow, lint, typecheck, formatting and build.
+
 ## Flow and interface
 
 Teachers share weekly blocks when each class can host a workshop; admins record them. PAs submit recurring availability separately. The admin selects a month and all or some classes, creates dated workshops within the class blocks, assigns PAs, reviews, and publishes.
@@ -81,13 +83,13 @@ Teachers see their school's published workshops; PAs see their own. Draft work n
 
 **Done when:** the admin plans two months for all or selected classes, mixes one- and two-workshop cadences, adds an ad hoc occurrence, and can safely retry a submission.
 
-## 4. Assign PAs automatically
+## 4. Assign PAs automatically — complete
 
-- Implement a pure matcher whose inputs are existing dated workshops, active PAs, availability, quotas, the required gap, and existing assignments. Its output contains proposed PA assignments and explanations; it cannot contain workshop date edits.
-- Reuse the manual eligibility rules. Prioritize workshops with fewer eligible PAs, fill minimum staffing before adding optional staff, and balance toward monthly quotas with deterministic tie-breaking. A greedy first version is acceptable; report that it may leave feasible combinations undiscovered.
-- Scope runs to the selected month/classes while loading all relevant PA commitments for quota and conflict checks. Preserve locked, manually adjusted, published, completed, and cancelled work.
-- Preview changes before applying. Replace only eligible machine-generated drafts in a transaction, with stale-preview detection and concurrency protection. A repeat run must not inflate workload counts or duplicate assignments.
-- Show actionable reasons for understaffing: missing availability/quota, insufficient full-duration availability, quota reached, conflicting assignment, or insufficient gap.
+- [x] Implement a pure matcher whose inputs are existing dated workshops, active PAs, availability, quotas, the required gap, and existing assignments. Its output contains proposed PA assignments and explanations; it cannot contain workshop date edits.
+- [x] Reuse the manual eligibility rules. Prioritize workshops with fewer eligible PAs, fill minimum staffing before adding optional staff, and balance toward monthly quotas with deterministic tie-breaking. A greedy first version is acceptable; report that it may leave feasible combinations undiscovered.
+- [x] Scope runs to the selected month/classes while loading all relevant PA commitments for quota and conflict checks. Preserve locked, manually adjusted, published, completed, and cancelled work.
+- [x] Preview changes before applying. Replace only eligible machine-generated drafts in a transaction, with stale-preview detection and concurrency protection. A repeat run must not inflate workload counts or duplicate assignments.
+- [x] Show actionable reasons for understaffing: missing availability/quota, insufficient full-duration availability, quota reached, conflicting assignment, or insufficient gap.
 
 **Done when:** the admin can generate, adjust, lock, rerun, and publish a month without moving dates or disturbing protected work. Tests cover partial staffing, same-school gaps, competing runs, month boundaries, and quota fairness.
 

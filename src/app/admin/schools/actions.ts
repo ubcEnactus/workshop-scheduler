@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { scheduleTransaction } from '@/lib/scheduling/store'
 import { schoolSchema, schoolIdSchema } from '@/lib/schemas/schools'
 
 export async function createSchool(formData: FormData) {
@@ -46,20 +47,22 @@ export async function softDeleteSchool(formData: FormData) {
   if (!id.success) {
     redirect('/admin/schools?error=Unknown+school.')
   }
-  const dependentRecord = await prisma.school.findFirst({
-    where: {
-      id: id.data.id,
-      deletedAt: null,
-      OR: [{ teachers: { some: { deletedAt: null } } }, { classSections: { some: {} } }],
-    },
-    select: { id: true },
-  })
-  if (dependentRecord) {
-    redirect('/admin/schools?error=Move+or+remove+this+school%27s+teachers+and+classes+first.')
-  }
-  await prisma.school.update({
-    where: { id: id.data.id, deletedAt: null },
-    data: { deletedAt: new Date() },
+  await scheduleTransaction(async (tx) => {
+    const dependentRecord = await tx.school.findFirst({
+      where: {
+        id: id.data.id,
+        deletedAt: null,
+        OR: [{ teachers: { some: { deletedAt: null } } }, { classSections: { some: {} } }],
+      },
+      select: { id: true },
+    })
+    if (dependentRecord) {
+      redirect('/admin/schools?error=Move+or+remove+this+school%27s+teachers+and+classes+first.')
+    }
+    await tx.school.update({
+      where: { id: id.data.id, deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
   })
   revalidatePath('/admin/schools')
 }

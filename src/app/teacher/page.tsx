@@ -1,85 +1,52 @@
 import { requireRole, signOut } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { formatInstantRange } from '@/lib/time'
-
+import { visibleWorkshop } from '@/lib/scheduling/visibility'
+import { PublishedWorkshops } from '@/components/published-workshops'
 export default async function TeacherHome() {
   const user = await requireRole('TEACHER')
-
   async function logout() {
     'use server'
     await requireRole('TEACHER')
     await signOut({ redirectTo: '/login' })
   }
-
   const workshops = user.schoolId
     ? await prisma.workshop.findMany({
-        where: {
-          status: 'PUBLISHED',
-          scheduledStart: { gte: new Date() },
-          classSection: {
-            schoolId: user.schoolId,
-            school: { deletedAt: null },
-            teacher: { deletedAt: null },
-          },
-        },
+        where: { AND: [visibleWorkshop, { classSection: { schoolId: user.schoolId } }] },
         include: {
           classSection: { select: { name: true } },
           assignments: {
             where: { status: 'PUBLISHED', pa: { deletedAt: null, role: 'PA' } },
             include: { pa: { select: { name: true, email: true } } },
           },
+          events: { where: { kind: { not: 'PUBLISH' } }, orderBy: { createdAt: 'desc' }, take: 1 },
         },
         orderBy: { scheduledStart: 'asc' },
       })
     : []
-
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Hello {user.name ?? user.email}</h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+      <h1 className="text-3xl font-semibold">Hello {user.name ?? user.email}</h1>
+      <p className="mt-2 text-sm">
         Your account is view-only. An admin manages class times, workshops, and instructors.
       </p>
-
-      <section className="mt-8">
-        <h2 className="text-lg font-medium">Upcoming workshops at your school</h2>
-        {!user.schoolId ? (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            Your account is not linked to a school yet. Ask an admin to update it.
-          </p>
-        ) : workshops.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-            No published workshops are currently scheduled.
-          </p>
-        ) : (
-          <ul className="mt-3 space-y-3">
-            {workshops.map((workshop) => (
-              <li
-                key={workshop.id}
-                className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
-              >
-                <p className="font-medium">{workshop.classSection.name}</p>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
-                </p>
-                <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-                  PAs:{' '}
-                  {workshop.assignments
-                    .map((assignment) => assignment.pa.name ?? assignment.pa.email)
-                    .join(', ') || 'Not assigned'}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
+      {!user.schoolId && (
+        <p>Your account is not linked to a school yet. Ask an admin to update it.</p>
+      )}
+      <PublishedWorkshops
+        upcomingTitle="Upcoming workshops at your school"
+        empty="No published workshops are currently scheduled."
+        items={workshops.map((w) => ({
+          id: w.id,
+          name: w.classSection.name,
+          start: w.scheduledStart,
+          end: w.scheduledEnd,
+          status: w.status,
+          pas: w.assignments.map((a) => a.pa.name ?? a.pa.email).join(', '),
+          reason: w.events[0]?.reason,
+        }))}
+      />
       <form action={logout} className="mt-10">
-        <button
-          type="submit"
-          className="text-xs font-medium text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-        >
-          Sign out
-        </button>
+        <button className="underline">Sign out</button>
       </form>
     </main>
   )

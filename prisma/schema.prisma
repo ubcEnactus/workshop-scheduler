@@ -159,8 +159,11 @@ model Workshop {
   status         WorkshopStatus @default(DRAFT)
   version        Int            @default(0)
   locked         Boolean        @default(false)
+  publishedAt    DateTime?
 
   assignments Assignment[]
+  changes WorkshopChange[]
+  events WorkshopEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -190,6 +193,35 @@ model MatchingPreview {
   createdAt DateTime @default(now())
   expiresAt DateTime
   appliedAt DateTime?
+}
+
+model WorkshopChange {
+  id String @id @default(cuid())
+  workshopId String
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  actorId String
+  payload Json
+  before Json
+  proposed Json
+  createdAt DateTime @default(now())
+  appliedAt DateTime?
+  @@index([workshopId])
+}
+
+model WorkshopEvent {
+  id String @id @default(cuid())
+  workshopId String
+  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  actorId String
+  actorName String
+  kind String
+  reason String
+  before Json
+  after Json
+  wasPublished Boolean
+  affectedPAIds String[]
+  createdAt DateTime @default(now())
+  @@index([workshopId, createdAt])
 }
 
 enum AssignmentStatus {

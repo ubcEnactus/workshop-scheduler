@@ -24,7 +24,9 @@ export function WorkshopStaffing({
   workshop: ScheduledWorkshop
   snapshot: ScheduleSnapshot
 }) {
-  const problems = staffingProblems(snapshot, workshop)
+  const problems = ['DRAFT', 'PUBLISHED'].includes(workshop.status)
+    ? staffingProblems(snapshot, workshop)
+    : []
   return (
     <section className="space-y-4 border-t pt-6">
       <h2 className="text-xl font-semibold">Staffing</h2>
