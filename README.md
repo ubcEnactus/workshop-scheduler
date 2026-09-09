@@ -14,9 +14,14 @@ Implemented today:
 - Read-only PA and teacher dashboards for published work
 - Dated draft workshops: month navigation, school/class filters, create and detail/edit forms
 - Vancouver date/time, hosting-block, staffing and class/teacher overlap validation
+- Monthly class cadence/defaults and selected-class batch planning with safe retries
+- Explicit PA quotas and assignment gaps; manual staffing, locking and publication
+- Automatic staffing previews with protected work and stale-input detection
+- Reviewed replacement, rescheduling, cancellation/completion and audit history
+- Availability review warnings and published history in PA/teacher views
 - Isolated PostgreSQL integration tests and Playwright browser coverage
 
-The cycle schema has been removed through a committed migration. Workshops have required UTC start/end instants and draft/published/completed/cancelled lifecycle states. Assignments are draft or published. Staffing, locking and publishing actions start in iteration 2; the seed includes a published example for the role dashboards. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md) for completed work and the remaining iterations.
+The cycle schema has been removed through a committed migration. Workshops have required UTC start/end instants and draft/published/completed/cancelled lifecycle states. Assignments are draft or published. Iterations 0–5 are implemented; the local pilot rehearsal is covered. Hosted staging, real email delivery and database recovery checks remain pending. See [the pilot runbook](docs/PILOT_RUNBOOK.md) for workflow, recovery and release checks. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md) for completed work and the remaining iterations.
 
 ## Local setup
 

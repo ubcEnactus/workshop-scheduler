@@ -17,5 +17,6 @@ export async function saveAvailability(formData: FormData): Promise<void> {
 
   revalidatePath('/pa/availability')
   revalidatePath('/pa')
+  revalidatePath('/admin/workshops', 'layout')
   redirect('/pa/availability?saved=1')
 }

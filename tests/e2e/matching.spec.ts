@@ -29,7 +29,10 @@ test('preview, apply, manually adjust, rerun and publish without moving dates', 
   await expect(page).toHaveURL(/matched=1/)
   await page.goto('/admin/workshops/' + w.id)
   await page.getByRole('button', { name: 'Remove' }).click()
-  await page.locator('summary').filter({ hasText: /^Choose a PA$/ }).click()
+  await page
+    .locator('summary')
+    .filter({ hasText: /^Choose a PA$/ })
+    .click()
   await page.getByRole('button', { name: 'Assign Fixture PA', exact: true }).click()
   await page.goto('/admin/workshops/match?month=2027-01')
   await page.getByRole('button', { name: 'Preview PA assignments' }).click()

@@ -31,6 +31,11 @@ test('invited users in all three roles sign in through real one-time magic links
         '/admin/pas',
         '/admin/classes',
         '/admin/workshops',
+        '/admin/workshops/plan',
+        '/admin/workshops/match',
+        '/admin/workshops/match/unavailable',
+        '/admin/workshops/changes/unavailable',
+        '/admin/staffing',
         `/admin/classes/${fixtures.cls.id}/edit`,
       ]) {
         await page.goto(route)

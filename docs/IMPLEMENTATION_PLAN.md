@@ -2,6 +2,10 @@
 
 Reviewed 9 September 2026 against `main` at `07e17a0` and `origin/ENCT-Frontend` at `3aa1dd5`. This is the execution checklist; `DESIGN_BRIEF.md` remains the product brief.
 
+Current status: **iterations 0–5 complete; iteration 6 local rehearsal complete, hosted staging pending**. Work remains on `feature/dated-workshops` with a generic UI. No merge or deployment has been performed.
+
+Final local verification after the later phases: **46 unit tests, 62 PostgreSQL integration tests and all 11 browser tests passed**, along with lint, typecheck, formatting, production build and `git diff --check`. Integration/browser runs each applied all eight migrations to fresh isolated databases and seeded twice. Production email guards, a workshop error boundary and a CI database/browser job were added for the rehearsal. See `PILOT_RUNBOOK.md` for recovery steps, dependency review, and the remaining hosted email/backup/restore/log checks.
+
 Build one demonstrable slice per iteration. Reach a manually scheduled, published workshop first, then make planning and staffing faster. Use plain forms, tables, links, and status messages throughout.
 
 Existing development data is disposable seed/demo data. Recreate and reseed the isolated development database for the redesign; no legacy-data audit, archival workflow, reconciliation list, or backfill is required. Keep committed migration history and add a new migration for the schema changes.
@@ -35,6 +39,8 @@ Desktop and 390px-wide workshop screenshots were inspected; the table scrolls wi
 Iteration 2 completed in commit `5219eeb`: explicit monthly quotas and a configurable positive assignment gap, shared eligibility checking, protected manual assignment/removal, draft locking, and atomic publication. Scheduling transactions serialize workshop/PA/availability/quota changes; stale workshop versions are rejected. Verified with 37 unit tests, 42 PostgreSQL tests, 8 browser tests, lint, typecheck, format check and build. The browser suite covers the complete real-login staffing/publication flow and draft privacy. Iteration 3 completed in commit `455b3b4`: per-class cadence and defaults, selected-class monthly planning, explicit date/time entry, prospective target changes and transactional batch retries. Verified with 37 unit, 46 PostgreSQL and 9 browser tests, lint, typecheck, format check and build.
 
 Iteration 4 completed in commit `9d9dfae`: deterministic quota-aware staffing, full schedule eligibility, protected work, 15-minute previews, stale-input detection and serialized atomic apply. Verified with 42 unit and 51 PostgreSQL tests, the new browser matching/adjustment/rerun/publication flow, lint, typecheck, formatting and build.
+
+Iteration 5 completed in commit `7cf8c2c`: separately reviewed published changes, atomic replacement, rescheduling with all retained PAs rechecked, cancellation reasons, completion, audit history, role history and availability-review flags. Verified with 42 unit and 60 PostgreSQL tests, all 11 browser scenarios (8 in the initial regression plus 3 rerun after fixing an ambiguous test locator), lint, typecheck, formatting and build. The narrow change-review screenshot was inspected.
 
 ## Flow and interface
 
@@ -93,22 +99,23 @@ Teachers see their school's published workshops; PAs see their own. Draft work n
 
 **Done when:** the admin can generate, adjust, lock, rerun, and publish a month without moving dates or disturbing protected work. Tests cover partial staffing, same-school gaps, competing runs, month boundaries, and quota fairness.
 
-## 5. Handle changes after publication
+## 5. Handle changes after publication — complete
 
-- Add admin replacement, rescheduling, cancellation with a reason, and completion. Record actor, timestamp, and before/after details for these changes.
-- A replacement is atomic: if the new PA is invalid, the old assignment remains. A reschedule must revalidate every retained PA and both months' counts if the date crosses a month boundary.
-- Stage edits to published workshops separately until the admin applies them; preserve the currently published information during review. Applying an exception updates only the affected workshop and refreshes both role views.
-- Keep cancellations and completions visible in history. The pilot can use external admin communication for changes; do not claim email notifications exist unless implemented.
-- Flag existing commitments affected by later PA availability edits. Never silently unassign or republish them.
+- [x] Add admin replacement, rescheduling, cancellation with a reason, and completion. Record actor, timestamp, and before/after details for these changes.
+- [x] A replacement is atomic: if the new PA is invalid, the old assignment remains. A reschedule must revalidate every retained PA and both months' counts if the date crosses a month boundary.
+- [x] Stage edits to published workshops separately until the admin applies them; preserve the currently published information during review. Applying an exception updates only the affected workshop and refreshes both role views.
+- [x] Keep cancellations and completions visible in history. The pilot can use external admin communication for changes; do not claim email notifications exist unless implemented.
+- [x] Flag existing commitments affected by later PA availability edits. Never silently unassign or republish them.
 
 **Done when:** an admin replaces an unavailable PA, moves a workshop, cancels another, and records completion; history and role views remain accurate, including failed edits.
 
-## 6. Run a realistic pilot rehearsal
+## 6. Run a realistic pilot rehearsal — local work complete; staging pending
 
-- Exercise multiple schools, classes with different cadences, uneven availability, insufficient PAs, quota zero, full quotas, locked rows, and adjacent-month conflicts. Run the complete workflow against a migrated test database.
-- Add browser coverage for bulk creation, matching/reruns, publishing, and exceptions. Add direct Server Action authorization and concurrency tests; UI restrictions alone are insufficient.
-- Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. Keep the visual design generic.
-- Verify deployment configuration, migration order, database recovery, real invite-only email login, and server error visibility. Review the remaining dependency advisories before launch.
+- [x] Exercise multiple schools, classes with different cadences, uneven availability, insufficient PAs, quota zero, full quotas, locked rows, and adjacent-month conflicts. Run the complete workflow against a migrated test database.
+- [x] Add browser coverage for bulk creation, matching/reruns, publishing, and exceptions. Add direct Server Action authorization and concurrency tests; UI restrictions alone are insufficient.
+- [x] Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. Keep the visual design generic.
+- [x] Review repository deployment configuration, migration order and remaining dependency advisories. Add production email configuration guards, an error boundary, and CI database/browser rehearsal.
+- [ ] Verify the hosted staging configuration, actual backup/restore, real invite-only email delivery and hosted server error visibility. No staging environment or real-email run was available in this task; see `PILOT_RUNBOOK.md` for the remaining steps.
 
 **Done when:** the entire monthly workflow and an ad hoc replacement succeed in staging with real email delivery, and the team can explain and recover failed operations. Deployment is a separate release action after this rehearsal.
 

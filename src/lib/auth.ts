@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import type { Role } from '@prisma/client'
 
 import { prisma } from '@/lib/db'
+import { emailDeliveryMode } from '@/lib/auth-email'
 
 // Augment the NextAuth Session so `session.user.role` and `schoolId` are typed.
 declare module 'next-auth' {
@@ -21,8 +22,6 @@ declare module 'next-auth' {
     } & DefaultSession['user']
   }
 }
-
-const hasResendKey = Boolean(process.env.AUTH_RESEND_KEY)
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -42,12 +41,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Fail closed at first-send-attempt: production must have a real key.
         // (We can't throw at module load because `next build` sets NODE_ENV
         // to production while collecting page data.)
-        if (!hasResendKey) {
-          if (process.env.NODE_ENV === 'production') {
-            throw new Error(
-              'AUTH_RESEND_KEY is required in production. Set it in your hosting env.'
-            )
-          }
+        if (
+          emailDeliveryMode({
+            nodeEnv: process.env.NODE_ENV,
+            apiKey: process.env.AUTH_RESEND_KEY,
+            from: process.env.AUTH_RESEND_FROM,
+          }) === 'console'
+        ) {
           console.log('\n──────────────────────────────────────────────')
           console.log('  Magic link (dev mode — no AUTH_RESEND_KEY set)')
           console.log(`  to: ${identifier}`)
