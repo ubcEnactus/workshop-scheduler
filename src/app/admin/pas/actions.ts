@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import { requireRole } from '@/lib/auth'
-import { prisma } from '@/lib/db'
 import { scheduleTransaction } from '@/lib/scheduling/store'
 import { paIdSchema, paSchema } from '@/lib/schemas/pas'
 
@@ -26,7 +25,7 @@ export async function createPA(formData: FormData) {
   }
 
   try {
-    await prisma.user.create({ data: { ...parsed.data, role: 'PA' } })
+    await scheduleTransaction((tx) => tx.user.create({ data: { ...parsed.data, role: 'PA' } }))
   } catch (error) {
     if (isDuplicateEmail(error)) {
       redirect(`/admin/pas?error=${encodeURIComponent(DUPLICATE_EMAIL)}`)
@@ -53,10 +52,12 @@ export async function updatePA(formData: FormData) {
   }
 
   try {
-    await prisma.user.update({
-      where: { id: id.data.id, role: 'PA', deletedAt: null },
-      data: parsed.data,
-    })
+    await scheduleTransaction((tx) =>
+      tx.user.update({
+        where: { id: id.data.id, role: 'PA', deletedAt: null },
+        data: parsed.data,
+      })
+    )
   } catch (error) {
     if (isDuplicateEmail(error)) {
       redirect(`/admin/pas/${id.data.id}/edit?error=${encodeURIComponent(DUPLICATE_EMAIL)}`)

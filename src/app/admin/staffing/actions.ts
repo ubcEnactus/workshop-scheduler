@@ -138,22 +138,6 @@ export async function publishWorkshop(formData: FormData) {
       if (workshop.version !== version)
         throw new SchedulingError('This workshop changed. Reload and try again.')
       const reasons = staffingProblems(snapshot, workshop)
-      // A later hosting-block edit must also be checked before publication.
-      const cls = await tx.classSection.findUnique({
-        where: { id: workshop.classSectionId },
-        include: { meetings: true },
-      })
-      const { vancouverDateKey, vancouverMinuteOfDay } = await import('@/lib/time')
-      const day = new Date(vancouverDateKey(workshop.scheduledStart) + 'T12:00:00Z').getUTCDay() - 1
-      if (
-        !cls?.meetings.some(
-          (m) =>
-            m.dayOfWeek === day &&
-            m.startMinute <= vancouverMinuteOfDay(workshop.scheduledStart) &&
-            m.endMinute >= vancouverMinuteOfDay(workshop.scheduledEnd)
-        )
-      )
-        reasons.push('Workshop no longer fits a class hosting block.')
       if (reasons.length) throw new SchedulingError(reasons.join(' '))
       await tx.assignment.updateMany({ where: { workshopId: id }, data: { status: 'PUBLISHED' } })
       await tx.workshop.update({

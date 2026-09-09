@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { clockMinutes, type WorkshopInput } from '@/lib/schemas/workshops'
-import { vancouverToUtc } from '@/lib/time'
+import { vancouverToUtc, vancouverDateKey, vancouverMinuteOfDay } from '@/lib/time'
 import type { ScheduleSnapshot } from './eligibility'
 
 export class SchedulingError extends Error {}
@@ -36,7 +36,7 @@ export async function loadSchedule(db: Prisma.TransactionClient): Promise<Schedu
     db.workshop.findMany({
       include: {
         assignments: { orderBy: { paId: 'asc' } },
-        classSection: { include: { teacher: true, school: true } },
+        classSection: { include: { teacher: true, school: true, meetings: true } },
       },
       orderBy: { id: 'asc' },
     }),
@@ -56,6 +56,14 @@ export async function loadSchedule(db: Prisma.TransactionClient): Promise<Schedu
       status: w.status,
       version: w.version,
       locked: w.locked,
+      hostingValid: w.classSection.meetings.some(
+        (block) =>
+          block.dayOfWeek ===
+            new Date(vancouverDateKey(w.scheduledStart) + 'T12:00:00Z').getUTCDay() - 1 &&
+          vancouverDateKey(w.scheduledStart) === vancouverDateKey(w.scheduledEnd) &&
+          block.startMinute <= vancouverMinuteOfDay(w.scheduledStart) &&
+          block.endMinute >= vancouverMinuteOfDay(w.scheduledEnd)
+      ),
       activeClass:
         w.classSection.teacher.deletedAt === null &&
         w.classSection.teacher.role === 'TEACHER' &&

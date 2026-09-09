@@ -65,6 +65,9 @@ export default async function WorkshopsPage({
         <Link href={'/admin/staffing?month=' + month} className="mt-3 block underline">
           PA quotas and assignment gap
         </Link>
+        <Link href={'/admin/workshops/match?month=' + month} className="mt-3 block underline">
+          Assign PAs automatically
+        </Link>
         <p className="mt-2 text-sm text-zinc-600">
           Plan dated drafts, then review each workshop. Drafts are private to admins.
         </p>

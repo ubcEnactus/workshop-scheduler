@@ -4,7 +4,6 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
-import { prisma } from '@/lib/db'
 import { scheduleTransaction } from '@/lib/scheduling/store'
 import {
   classMeetingIdSchema,
@@ -168,31 +167,33 @@ export async function addMeeting(formData: FormData) {
     redirect(`${target}?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
   }
 
-  const cls = await prisma.classSection.findFirst({
-    where: {
-      id: parsed.data.classSectionId,
-      teacher: { deletedAt: null },
-      school: { deletedAt: null },
-    },
-    select: { id: true },
-  })
-  if (!cls) redirect('/admin/classes?error=Unknown+or+inactive+class.')
+  await scheduleTransaction(async (tx) => {
+    const cls = await tx.classSection.findFirst({
+      where: {
+        id: parsed.data.classSectionId,
+        teacher: { deletedAt: null },
+        school: { deletedAt: null },
+      },
+      select: { id: true },
+    })
+    if (!cls) redirect('/admin/classes?error=Unknown+or+inactive+class.')
 
-  const overlap = await prisma.classMeeting.findFirst({
-    where: {
-      classSectionId: parsed.data.classSectionId,
-      dayOfWeek: parsed.data.dayOfWeek,
-      startMinute: { lt: parsed.data.endMinute },
-      endMinute: { gt: parsed.data.startMinute },
-    },
-    select: { id: true },
+    const overlap = await tx.classMeeting.findFirst({
+      where: {
+        classSectionId: parsed.data.classSectionId,
+        dayOfWeek: parsed.data.dayOfWeek,
+        startMinute: { lt: parsed.data.endMinute },
+        endMinute: { gt: parsed.data.startMinute },
+      },
+      select: { id: true },
+    })
+    if (overlap) {
+      redirect(
+        `/admin/classes/${parsed.data.classSectionId}/edit?error=Meeting+times+cannot+overlap.`
+      )
+    }
+    await tx.classMeeting.create({ data: parsed.data })
   })
-  if (overlap) {
-    redirect(
-      `/admin/classes/${parsed.data.classSectionId}/edit?error=Meeting+times+cannot+overlap.`
-    )
-  }
-  await prisma.classMeeting.create({ data: parsed.data })
   revalidatePath(`/admin/classes/${parsed.data.classSectionId}/edit`)
 }
 

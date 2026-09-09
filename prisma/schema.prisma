@@ -180,6 +180,18 @@ model WorkshopBatch {
   workshops Workshop[]
 }
 
+model MatchingPreview {
+  id String @id @default(cuid())
+  actorId String
+  month String
+  classIds Json
+  inputHash String
+  plan Json
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  appliedAt DateTime?
+}
+
 enum AssignmentStatus {
   DRAFT
   PUBLISHED

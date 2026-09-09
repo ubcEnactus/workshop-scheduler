@@ -32,7 +32,7 @@ Final verification against the implementation:
 
 Desktop and 390px-wide workshop screenshots were inspected; the table scrolls within the page and forms remain usable. `README.md` documents setup and repeatable checks. The initial dependency installation reported three existing high-severity advisories; dependency remediation remains part of the pre-launch review in iteration 6.
 
-Iteration 2 completed in commit `5219eeb`: explicit monthly quotas and a configurable positive assignment gap, shared eligibility checking, protected manual assignment/removal, draft locking, and atomic publication. Scheduling transactions serialize workshop/PA/availability/quota changes; stale workshop versions are rejected. Verified with 37 unit tests, 42 PostgreSQL tests, 8 browser tests, lint, typecheck, format check and build. The browser suite covers the complete real-login staffing/publication flow and draft privacy. Iteration 3 is next.
+Iteration 2 completed in commit `5219eeb`: explicit monthly quotas and a configurable positive assignment gap, shared eligibility checking, protected manual assignment/removal, draft locking, and atomic publication. Scheduling transactions serialize workshop/PA/availability/quota changes; stale workshop versions are rejected. Verified with 37 unit tests, 42 PostgreSQL tests, 8 browser tests, lint, typecheck, format check and build. The browser suite covers the complete real-login staffing/publication flow and draft privacy. Iteration 3 completed in commit `455b3b4`: per-class cadence and defaults, selected-class monthly planning, explicit date/time entry, prospective target changes and transactional batch retries. Verified with 37 unit, 46 PostgreSQL and 9 browser tests, lint, typecheck, format check and build.
 
 ## Flow and interface
 
@@ -72,12 +72,12 @@ Teachers see their school's published workshops; PAs see their own. Draft work n
 
 **Done when:** admin creates a slot, manually staffs and publishes it; the assigned PA and correct school's teachers see it; everyone else cannot. A browser test covers this complete path and verifies draft privacy.
 
-## 3. Plan a month for selected classes
+## 3. Plan a month for selected classes — complete
 
-- Add per-class monthly cadence and default workshop duration/staffing requirements. Keep values admin-editable rather than adopting the frontend branch's changed staffing defaults.
-- Provide select-all and selected-class creation. Preview the missing occurrences against that month's existing workshops; the admin explicitly chooses each date/time inside a hosting block before saving. Show PA availability counts as guidance if useful.
-- Support ad hoc workshops and preserve previously created slots. Repeated submissions must not duplicate workshops; use a batch request key and transactional validation. Explain classes without blocks or with incomplete dates instead of silently skipping them.
-- Keep cadence changes prospective: editing a class's target must not rewrite existing months. Show cancellations separately from planned/delivered totals so the admin can choose a replacement.
+- [x] Add per-class monthly cadence and default workshop duration/staffing requirements. Keep values admin-editable rather than adopting the frontend branch's changed staffing defaults.
+- [x] Provide select-all and selected-class creation. Preview the missing occurrences against that month's existing workshops; the admin explicitly chooses each date/time inside a hosting block before saving. Show PA availability counts as guidance if useful.
+- [x] Support ad hoc workshops and preserve previously created slots. Repeated submissions must not duplicate workshops; use a batch request key and transactional validation. Explain classes without blocks or with incomplete dates instead of silently skipping them.
+- [x] Keep cadence changes prospective: editing a class's target must not rewrite existing months. Show cancellations separately from planned/delivered totals so the admin can choose a replacement.
 
 **Done when:** the admin plans two months for all or selected classes, mixes one- and two-workshop cadences, adds an ad hoc occurrence, and can safely retry a submission.
 

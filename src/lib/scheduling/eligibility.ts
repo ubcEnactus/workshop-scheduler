@@ -13,6 +13,7 @@ export type ScheduledWorkshop = {
   version: number
   locked: boolean
   activeClass: boolean
+  hostingValid?: boolean
   assignments: { paId: string; status: AssignmentStatus; source: AssignmentSource }[]
 }
 export type ScheduleSnapshot = {
@@ -43,6 +44,8 @@ export function eligibility(
 ): string[] {
   const reasons: string[] = []
   if (!workshop.activeClass) reasons.push('Inactive class, teacher or school.')
+  if (workshop.hostingValid === false)
+    reasons.push('Workshop no longer fits a class hosting block.')
   if (!snapshot.pas.some((pa) => pa.id === paId)) reasons.push('PA account is inactive.')
   if (snapshot.minimumGapMinutes === null || snapshot.minimumGapMinutes <= 0)
     reasons.push('Set a positive minimum assignment gap.')

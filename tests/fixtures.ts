@@ -12,6 +12,7 @@ export function assertTestDatabase() {
 export async function resetFixtures() {
   assertTestDatabase()
   await prisma.$transaction([
+    prisma.matchingPreview.deleteMany(),
     prisma.monthlyPAQuota.deleteMany(),
     prisma.schedulingSettings.update({
       where: { id: 1 },
