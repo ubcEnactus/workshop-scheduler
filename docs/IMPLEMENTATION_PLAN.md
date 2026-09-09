@@ -111,6 +111,8 @@ Teachers see their school's published workshops; PAs see their own. Draft work n
 
 ## 6. Run a realistic pilot rehearsal — local work complete; staging pending
 
+Local rehearsal implementation and release notes: commit `4f6a785`. Hosted staging remains unchecked below.
+
 - [x] Exercise multiple schools, classes with different cadences, uneven availability, insufficient PAs, quota zero, full quotas, locked rows, and adjacent-month conflicts. Run the complete workflow against a migrated test database.
 - [x] Add browser coverage for bulk creation, matching/reruns, publishing, and exceptions. Add direct Server Action authorization and concurrency tests; UI restrictions alone are insufficient.
 - [x] Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. Keep the visual design generic.
