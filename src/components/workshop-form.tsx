@@ -1,5 +1,6 @@
 import { SubmitButton } from '@/components/submit-button'
 import { DAY_LABELS, formatSlotRange } from '@/lib/time'
+import { CalendarClock, Clock3, Users } from 'lucide-react'
 
 export type WorkshopClass = {
   id: string
@@ -30,7 +31,7 @@ export function WorkshopForm({
   }
 }) {
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} className="space-y-5">
       <input type="hidden" name="month" value={month} />
       {initial && (
         <>
@@ -38,16 +39,14 @@ export function WorkshopForm({
           <input type="hidden" name="version" value={initial.version} />
         </>
       )}
-      <div>
-        <label htmlFor="workshop-class" className="block text-sm font-medium">
-          Class
-        </label>
+      <div className="field">
+        <label htmlFor="workshop-class">Class</label>
         <select
           id="workshop-class"
           name="classSectionId"
           defaultValue={initial?.classSectionId ?? ''}
           required
-          className="mt-1 block w-full rounded border px-3 py-2"
+          className="input"
         >
           <option value="">Select a class…</option>
           {classes.map((cls) => (
@@ -57,97 +56,104 @@ export function WorkshopForm({
           ))}
         </select>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div>
-          <label htmlFor="workshop-date" className="block text-sm font-medium">
-            Vancouver date
-          </label>
-          <input
-            id="workshop-date"
-            type="date"
-            name="date"
-            defaultValue={initial?.date ?? `${month}-01`}
-            required
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <CalendarClock className="size-4 text-amber-600" />
+          Date and time
         </div>
-        <div>
-          <label htmlFor="workshop-start" className="block text-sm font-medium">
-            Start time
-          </label>
-          <input
-            id="workshop-start"
-            type="time"
-            name="startTime"
-            defaultValue={initial?.startTime}
-            required
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="workshop-end" className="block text-sm font-medium">
-            End time
-          </label>
-          <input
-            id="workshop-end"
-            type="time"
-            name="endTime"
-            defaultValue={initial?.endTime}
-            required
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor="workshop-min" className="block text-sm font-medium">
-            Minimum PAs
-          </label>
-          <input
-            id="workshop-min"
-            type="number"
-            name="minPAs"
-            min="1"
-            step="1"
-            defaultValue={initial?.minPAs ?? 1}
-            required
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="workshop-max" className="block text-sm font-medium">
-            Maximum PAs
-          </label>
-          <input
-            id="workshop-max"
-            type="number"
-            name="maxPAs"
-            min="1"
-            step="1"
-            defaultValue={initial?.maxPAs ?? 3}
-            required
-            className="mt-1 w-full rounded border px-3 py-2"
-          />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="field">
+            <label htmlFor="workshop-date">Vancouver date</label>
+            <input
+              id="workshop-date"
+              type="date"
+              name="date"
+              defaultValue={initial?.date ?? `${month}-01`}
+              required
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="workshop-start">Start time</label>
+            <input
+              id="workshop-start"
+              type="time"
+              name="startTime"
+              defaultValue={initial?.startTime}
+              required
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="workshop-end">End time</label>
+            <input
+              id="workshop-end"
+              type="time"
+              name="endTime"
+              defaultValue={initial?.endTime}
+              required
+              className="input"
+            />
+          </div>
         </div>
       </div>
-      <p className="text-sm text-zinc-600">
+      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+        <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <Users className="size-4 text-amber-600" />
+          Staffing target
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="field">
+            <label htmlFor="workshop-min">Minimum PAs</label>
+            <input
+              id="workshop-min"
+              type="number"
+              name="minPAs"
+              min="1"
+              step="1"
+              defaultValue={initial?.minPAs ?? 1}
+              required
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="workshop-max">Maximum PAs</label>
+            <input
+              id="workshop-max"
+              type="number"
+              name="maxPAs"
+              min="1"
+              step="1"
+              defaultValue={initial?.maxPAs ?? 3}
+              required
+              className="input"
+            />
+          </div>
+        </div>
+      </div>
+      <p className="flex items-start gap-2 text-sm text-slate-500">
+        <Clock3 className="mt-0.5 size-4 shrink-0" />
         Times use America/Vancouver. The entire workshop must fit within one hosting block on the
         selected weekday.
       </p>
-      <details className="rounded border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Class hosting blocks</summary>
-        <ul className="mt-3 space-y-2 text-sm">
+      <details className="group rounded-xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-700 group-open:text-slate-950">
+          Class hosting blocks
+        </summary>
+        <ul className="mt-4 divide-y divide-slate-100 text-sm">
           {classes.map((cls) => (
-            <li key={cls.id}>
-              <strong>
+            <li key={cls.id} className="py-2.5 first:pt-0 last:pb-0">
+              <strong className="text-slate-900">
                 {cls.name} · {cls.school.name}:
               </strong>{' '}
-              {cls.meetings
-                .map(
-                  (meeting) =>
-                    `${DAY_LABELS[meeting.dayOfWeek]} ${formatSlotRange(meeting.startMinute, meeting.endMinute - meeting.startMinute)}`
-                )
-                .join('; ') || 'No hosting blocks. Add them under Classes first.'}
+              <span className="text-slate-500">
+                {cls.meetings
+                  .map(
+                    (meeting) =>
+                      `${DAY_LABELS[meeting.dayOfWeek]} ${formatSlotRange(meeting.startMinute, meeting.endMinute - meeting.startMinute)}`
+                  )
+                  .join('; ') || 'No hosting blocks. Add them under Classes first.'}
+              </span>
             </li>
           ))}
         </ul>
@@ -155,7 +161,9 @@ export function WorkshopForm({
       {classes.length ? (
         <SubmitButton>{initial ? 'Save draft' : 'Create draft'}</SubmitButton>
       ) : (
-        <p>Add an active class and its hosting blocks before creating a workshop.</p>
+        <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+          Add an active class and its hosting blocks before creating a workshop.
+        </p>
       )}
     </form>
   )

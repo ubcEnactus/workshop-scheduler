@@ -1,7 +1,14 @@
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+
+import { FormError } from '@/components/form-error'
+import { SubmitButton } from '@/components/submit-button'
+import { buttonClasses } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { notFound } from 'next/navigation'
-import { FormError } from '@/components/form-error'
+
 import { updateSchool } from '../../actions'
 
 export default async function EditSchoolPage({
@@ -14,52 +21,57 @@ export default async function EditSchoolPage({
   await requireRole('ADMIN')
   const { id } = await params
   const { error } = await searchParams
-
-  const school = await prisma.school.findFirst({
-    where: { id, deletedAt: null },
-  })
+  const school = await prisma.school.findFirst({ where: { id, deletedAt: null } })
   if (!school) notFound()
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Edit school</h1>
-
-      <div className="mt-6">
-        <FormError message={error} />
-      </div>
-
-      <form action={updateSchool} className="mt-8 space-y-4">
-        <input type="hidden" name="id" value={school.id} />
-        <div>
-          <label className="block text-sm font-medium">Name</label>
-          <input
-            name="name"
-            defaultValue={school.name}
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">District</label>
-          <input
-            name="district"
-            defaultValue={school.district}
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
-        </div>
-        <div className="flex items-center gap-4">
-          <button
-            type="submit"
-            className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
-          >
-            Save
-          </button>
-          <a href="/admin/schools" className="text-sm text-zinc-600 hover:underline">
-            Cancel
-          </a>
-        </div>
-      </form>
+    <main className="page-content">
+      <PageHeader
+        eyebrow="Schools"
+        title="Edit school"
+        description={`Update ${school.name}’s name or school district.`}
+        actions={
+          <Link href="/admin/schools" className={buttonClasses({ variant: 'secondary' })}>
+            Back to schools
+          </Link>
+        }
+      />
+      <FormError message={error} />
+      <Panel
+        title="School details"
+        description="These details appear throughout class and workshop planning."
+        className="max-w-2xl"
+      >
+        <form action={updateSchool} className="space-y-5">
+          <input type="hidden" name="id" value={school.id} />
+          <div className="field">
+            <label htmlFor="school-name">Name</label>
+            <input
+              id="school-name"
+              name="name"
+              defaultValue={school.name}
+              required
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="school-district">District</label>
+            <input
+              id="school-district"
+              name="district"
+              defaultValue={school.district}
+              required
+              className="input"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <SubmitButton>Save</SubmitButton>
+            <Link href="/admin/schools" className={buttonClasses({ variant: 'ghost' })}>
+              Cancel
+            </Link>
+          </div>
+        </form>
+      </Panel>
     </main>
   )
 }

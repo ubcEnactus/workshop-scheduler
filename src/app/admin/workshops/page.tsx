@@ -4,10 +4,32 @@ import { prisma } from '@/lib/db'
 import { FormError } from '@/components/form-error'
 import { WorkshopForm } from '@/components/workshop-form'
 import { monthSchema } from '@/lib/schemas/workshops'
-import { formatInstantRange, shiftMonth, vancouverMonthBounds, vancouverMonthKey } from '@/lib/time'
+import {
+  formatInstantRange,
+  shiftMonth,
+  vancouverDateKey,
+  vancouverMonthBounds,
+  vancouverMonthKey,
+} from '@/lib/time'
 import { createWorkshop } from './actions'
 import { loadSchedule } from '@/lib/scheduling/store'
 import { staffingProblems } from '@/lib/scheduling/eligibility'
+import { AlertTriangle, CalendarDays, Settings2, Sparkles } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
+import { StatCard } from '@/components/ui/stat-card'
+import { StatusBadge } from '@/components/ui/status-badge'
+import { buttonClasses } from '@/components/ui/button'
+
+function dateTile(date: Date) {
+  const [year, month, day] = vancouverDateKey(date).split('-').map(Number)
+  return {
+    month: new Intl.DateTimeFormat('en-CA', { month: 'short', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(year, month - 1, day))
+    ),
+    day,
+  }
+}
 
 export default async function WorkshopsPage({
   searchParams,
@@ -55,163 +77,280 @@ export default async function WorkshopsPage({
   const monthHref = (value: string) =>
     `/admin/workshops?${new URLSearchParams({ month: value, ...(query.schoolId ? { schoolId: query.schoolId } : {}), ...(query.classSectionId ? { classSectionId: query.classSectionId } : {}) })}`
   const snapshot = await loadSchedule(prisma)
+  const drafts = workshops.filter((workshop) => workshop.status === 'DRAFT').length
+  const published = workshops.filter((workshop) => workshop.status === 'PUBLISHED').length
+  const needsReview = workshops.filter(
+    (workshop) =>
+      workshop.status === 'PUBLISHED' &&
+      workshop.scheduledEnd.getTime() >= Date.now() &&
+      snapshot.workshops.some(
+        (item) => item.id === workshop.id && staffingProblems(snapshot, item).length > 0
+      )
+  ).length
   return (
-    <main className="mx-auto w-full max-w-5xl space-y-8 px-6 py-12">
-      <header>
-        <Link href="/admin" className="text-sm underline">
-          Admin home
+    <main className="page-content">
+      <PageHeader
+        eyebrow="Schedule workspace"
+        title="Workshops"
+        description={`Plan and staff dated workshops for ${month}. Drafts remain private until you publish them.`}
+        actions={
+          <>
+            <Link href={'/admin/workshops/plan?month=' + month} className={buttonClasses()}>
+              <CalendarDays className="size-4" /> Plan monthly workshops
+            </Link>
+            <Link
+              href={'/admin/workshops/match?month=' + month}
+              className={buttonClasses({ variant: 'secondary' })}
+            >
+              <Sparkles className="size-4" /> Assign PAs automatically
+            </Link>
+          </>
+        }
+      >
+        <Link href="/admin" className="text-sm font-medium text-slate-500 hover:text-slate-900">
+          ← Admin home
         </Link>
-        <h1 className="mt-4 text-3xl font-semibold">Workshops</h1>
-        <Link href={'/admin/workshops/plan?month=' + month} className="mt-3 block underline">
-          Plan monthly workshops
-        </Link>
-        <Link href={'/admin/staffing?month=' + month} className="mt-3 block underline">
-          PA quotas and assignment gap
-        </Link>
-        <Link href={'/admin/workshops/match?month=' + month} className="mt-3 block underline">
-          Assign PAs automatically
-        </Link>
-        <p className="mt-2 text-sm text-zinc-600">
-          Plan dated drafts, then review each workshop. Drafts are private to admins.
-        </p>
-      </header>
+      </PageHeader>
       <FormError
         message={
           query.error ??
           (!parsed.success ? 'Invalid month. Showing the current Vancouver month.' : undefined)
         }
       />
-      <form method="get" className="flex flex-wrap items-end gap-4">
-        <div>
-          <label htmlFor="month" className="block text-sm font-medium">
-            Month
-          </label>
-          <input
-            id="month"
-            name="month"
-            type="month"
-            defaultValue={month}
-            required
-            className="mt-1 rounded border p-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="school" className="block text-sm font-medium">
-            School filter
-          </label>
-          <select
-            id="school"
-            name="schoolId"
-            defaultValue={query.schoolId ?? ''}
-            className="mt-1 max-w-full rounded border p-2"
-          >
-            <option value="">All schools</option>
-            {schools.map((school) => (
-              <option key={school.id} value={school.id}>
-                {school.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="class-filter" className="block text-sm font-medium">
-            Class filter
-          </label>
-          <select
-            id="class-filter"
-            name="classSectionId"
-            defaultValue={query.classSectionId ?? ''}
-            className="mt-1 max-w-full rounded border p-2"
-          >
-            <option value="">All classes</option>
-            {classes.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button className="rounded border px-4 py-2" type="submit">
-          Show month
-        </button>
-      </form>
-      <nav aria-label="Month navigation" className="flex flex-wrap justify-between gap-4">
-        <Link href={monthHref(shiftMonth(month, -1))} className="underline">
-          Previous month
-        </Link>
-        <span className="font-medium">{month} · Vancouver</span>
-        <Link href={monthHref(shiftMonth(month, 1))} className="underline">
-          Next month
-        </Link>
-      </nav>
-      {workshops.length === 0 ? (
-        <p>No workshops in this month for these filters.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Workshops for {month}, America/Vancouver</caption>
-            <thead className="border-b">
-              <tr>
-                {[
-                  'Class',
-                  'School',
-                  'Vancouver date/time',
-                  'Staffing',
-                  'Status',
-                  'Editing',
-                  'Lock',
-                  'Review',
-                ].map((label) => (
-                  <th key={label} scope="col" className="p-3">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {workshops.map((workshop) => (
-                <tr key={workshop.id} className="border-b">
-                  <td className="p-3">
-                    <Link href={`/admin/workshops/${workshop.id}`} className="underline">
-                      {workshop.classSection.name}
-                    </Link>
-                  </td>
-                  <td className="p-3">{workshop.classSection.school.name}</td>
-                  <td className="p-3">
-                    {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
-                  </td>
-                  <td className="p-3">
-                    {workshop._count.assignments} assigned · {workshop.minPAs}–{workshop.maxPAs}{' '}
-                    needed
-                  </td>
-                  <td className="p-3">{workshop.status.toLowerCase()}</td>
-                  <td className="p-3">
-                    {workshop.status === 'DRAFT' && workshop._count.assignments === 0
-                      ? 'Editable'
-                      : 'Protected'}
-                  </td>
-                  <td className="p-3">
-                    {workshop.locked || workshop.status !== 'DRAFT' ? 'Locked' : 'Unlocked'}
-                  </td>
-                  <td className="p-3">
-                    {workshop.status === 'PUBLISHED' &&
-                    workshop.scheduledEnd.getTime() >= Date.now() &&
-                    snapshot.workshops.some(
-                      (w) => w.id === workshop.id && staffingProblems(snapshot, w).length > 0
-                    )
-                      ? 'Needs review — open workshop'
-                      : '—'}
-                  </td>
-                </tr>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Workshops"
+          value={workshops.length}
+          detail={`${month} total`}
+          icon={<CalendarDays className="size-5" />}
+          tone="blue"
+        />
+        <StatCard
+          label="Drafts"
+          value={drafts}
+          detail="Private planning work"
+          icon={<Settings2 className="size-5" />}
+          tone="slate"
+        />
+        <StatCard
+          label={needsReview ? 'Needs review' : 'Published'}
+          value={needsReview || published}
+          detail={needsReview ? `${published} published in total` : 'Official assignments'}
+          icon={
+            needsReview ? <AlertTriangle className="size-5" /> : <Sparkles className="size-5" />
+          }
+          tone={needsReview ? 'amber' : 'green'}
+        />
+      </div>
+      <Panel
+        title="Month and filters"
+        description="Focus the workspace without changing the underlying schedule."
+      >
+        <form method="get" className="form-grid items-end lg:grid-cols-[1fr_1fr_1fr_auto]">
+          <div className="field">
+            <label htmlFor="month">Month</label>
+            <input
+              id="month"
+              name="month"
+              type="month"
+              defaultValue={month}
+              required
+              className="input"
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="school">School filter</label>
+            <select
+              id="school"
+              name="schoolId"
+              defaultValue={query.schoolId ?? ''}
+              className="input"
+            >
+              <option value="">All schools</option>
+              {schools.map((school) => (
+                <option key={school.id} value={school.id}>
+                  {school.name}
+                </option>
               ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <section className="max-w-2xl">
-        <h2 className="mb-4 text-xl font-medium">Create workshop</h2>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="class-filter">Class filter</label>
+            <select
+              id="class-filter"
+              name="classSectionId"
+              defaultValue={query.classSectionId ?? ''}
+              className="input"
+            >
+              <option value="">All classes</option>
+              {classes.map((cls) => (
+                <option key={cls.id} value={cls.id}>
+                  {cls.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button className={buttonClasses({ variant: 'secondary' })} type="submit">
+            Show month
+          </button>
+        </form>
+        <nav
+          aria-label="Month navigation"
+          className="mt-5 flex items-center justify-between gap-4 border-t border-slate-100 pt-4 text-sm"
+        >
+          <Link
+            href={monthHref(shiftMonth(month, -1))}
+            className="font-medium text-slate-500 hover:text-slate-900"
+          >
+            Previous month
+          </Link>
+          <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
+            {month} · Vancouver
+          </span>
+          <Link
+            href={monthHref(shiftMonth(month, 1))}
+            className="font-medium text-slate-500 hover:text-slate-900"
+          >
+            Next month
+          </Link>
+        </nav>
+      </Panel>
+      <Panel
+        title="Monthly schedule"
+        description={`${workshops.length} workshop${workshops.length === 1 ? '' : 's'} in the current view.`}
+        actions={
+          <Link
+            href={'/admin/staffing?month=' + month}
+            className={buttonClasses({ variant: 'ghost', size: 'sm' })}
+          >
+            <Settings2 className="size-4" /> PA quotas and assignment gap
+          </Link>
+        }
+      >
+        {workshops.length === 0 ? (
+          <div className="empty-state">
+            <CalendarDays className="mx-auto size-9 text-slate-300" />
+            <p className="mt-3 font-semibold text-slate-800">
+              No workshops in this month for these filters.
+            </p>
+            <p className="mt-1 text-sm text-slate-500">
+              Plan the month or adjust the filters above.
+            </p>
+          </div>
+        ) : (
+          <>
+            <p className="mb-3 text-xs text-slate-500 sm:hidden">
+              Swipe horizontally to review every schedule column.
+            </p>
+            <div
+              className="table-scroll"
+              role="region"
+              aria-label="Scrollable workshop schedule"
+              tabIndex={0}
+            >
+              <table className="data-table">
+                <caption className="sr-only">Workshops for {month}, America/Vancouver</caption>
+                <thead>
+                  <tr>
+                    {[
+                      'Class',
+                      'School',
+                      'Vancouver date/time',
+                      'Staffing',
+                      'Status',
+                      'Editing',
+                      'Lock',
+                      'Review',
+                    ].map((label) => (
+                      <th key={label} scope="col">
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {workshops.map((workshop) => (
+                    <tr key={workshop.id}>
+                      <td>
+                        <Link
+                          href={`/admin/workshops/${workshop.id}`}
+                          className="font-semibold text-slate-900 hover:text-[#1e2a4a] hover:underline"
+                        >
+                          {workshop.classSection.name}
+                        </Link>
+                      </td>
+                      <td className="text-slate-500">{workshop.classSection.school.name}</td>
+                      <td className="min-w-64">
+                        <div className="flex items-center gap-3">
+                          <span className="flex size-12 shrink-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 leading-none">
+                            <span className="text-[10px] font-bold tracking-wide text-slate-500 uppercase">
+                              {dateTile(workshop.scheduledStart).month}
+                            </span>
+                            <span className="mt-1 text-base font-bold text-slate-900">
+                              {dateTile(workshop.scheduledStart).day}
+                            </span>
+                          </span>
+                          <span className="text-sm font-medium text-slate-700">
+                            {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
+                          </span>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="font-semibold text-slate-900">
+                          {workshop._count.assignments}
+                        </span>{' '}
+                        <span className="text-slate-500">
+                          / {workshop.minPAs}–{workshop.maxPAs} PAs
+                        </span>
+                      </td>
+                      <td>
+                        <StatusBadge status={workshop.status} />
+                      </td>
+                      <td>
+                        <span className="text-xs font-medium text-slate-500">
+                          {workshop.status === 'DRAFT' && workshop._count.assignments === 0
+                            ? 'Editable'
+                            : 'Protected'}
+                        </span>
+                      </td>
+                      <td>
+                        <StatusBadge
+                          status={
+                            workshop.locked || workshop.status !== 'DRAFT' ? 'LOCKED' : 'UNLOCKED'
+                          }
+                        />
+                      </td>
+                      <td>
+                        {workshop.status === 'PUBLISHED' &&
+                        workshop.scheduledEnd.getTime() >= Date.now() &&
+                        snapshot.workshops.some(
+                          (w) => w.id === workshop.id && staffingProblems(snapshot, w).length > 0
+                        ) ? (
+                          <Link
+                            href={`/admin/workshops/${workshop.id}`}
+                            className="font-semibold text-amber-700 hover:underline"
+                          >
+                            Needs review
+                          </Link>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </Panel>
+      <Panel
+        title="Create workshop"
+        description="Add an ad hoc dated workshop to the current month."
+        className="max-w-3xl"
+      >
         <WorkshopForm action={createWorkshop} classes={classes} month={month} />
-      </section>
+      </Panel>
     </main>
   )
 }

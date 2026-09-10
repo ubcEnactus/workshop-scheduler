@@ -1,6 +1,15 @@
+import Link from 'next/link'
+import { Pencil, School } from 'lucide-react'
+
+import { FormError } from '@/components/form-error'
+import { SubmitButton } from '@/components/submit-button'
+import { buttonClasses } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { FormError } from '@/components/form-error'
+
 import { createSchool, softDeleteSchool } from './actions'
 
 export default async function SchoolsPage({
@@ -10,71 +19,102 @@ export default async function SchoolsPage({
 }) {
   await requireRole('ADMIN')
   const { error } = await searchParams
-
   const schools = await prisma.school.findMany({
     where: { deletedAt: null },
     orderBy: { name: 'asc' },
   })
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-3xl font-semibold tracking-tight">Schools</h1>
+    <main className="page-content">
+      <PageHeader
+        eyebrow="Program setup"
+        title="Schools"
+        description="Manage the partner schools and districts in your workshop program."
+      />
+      <FormError message={error} />
 
-      <div className="mt-6">
-        <FormError message={error} />
-      </div>
-
-      <form action={createSchool} className="mt-8 space-y-4">
-        <h2 className="text-lg font-medium">Add school</h2>
-        <div>
-          <label className="block text-sm font-medium">Name</label>
-          <input
-            name="name"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">District</label>
-          <input
-            name="district"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
+        <Panel
+          title="Add school"
+          description="Create a school before adding its teachers and classes."
         >
-          Add school
-        </button>
-      </form>
+          <form action={createSchool} className="space-y-5">
+            <div className="field">
+              <label htmlFor="school-name">Name</label>
+              <input id="school-name" name="name" required className="input" />
+            </div>
+            <div className="field">
+              <label htmlFor="school-district">District</label>
+              <input id="school-district" name="district" required className="input" />
+            </div>
+            <SubmitButton>Add school</SubmitButton>
+          </form>
+        </Panel>
 
-      <ul className="mt-12 divide-y">
-        {schools.length === 0 && <li className="py-4 text-sm text-zinc-500">No schools yet.</li>}
-        {schools.map((school) => (
-          <li key={school.id} className="flex items-center justify-between py-3">
-            <div>
-              <p className="font-medium">{school.name}</p>
-              <p className="text-sm text-zinc-500">{school.district}</p>
+        <Panel
+          title="School directory"
+          description={`${schools.length} active school${schools.length === 1 ? '' : 's'}`}
+        >
+          {schools.length === 0 ? (
+            <div className="empty-state">
+              <School className="size-6" aria-hidden="true" />
+              <p>No schools yet.</p>
             </div>
-            <div className="flex items-center gap-4">
-              <a
-                href={`/admin/schools/${school.id}/edit`}
-                className="text-sm text-zinc-600 hover:underline"
-              >
-                Edit
-              </a>
-              <form action={softDeleteSchool}>
-                <input type="hidden" name="id" value={school.id} />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
-                  Delete
-                </button>
-              </form>
-            </div>
-          </li>
-        ))}
-      </ul>
+          ) : (
+            <>
+              <p className="mb-3 text-xs font-medium text-slate-500 sm:hidden">
+                Scroll sideways to view all columns and actions.
+              </p>
+              <div className="table-scroll relative">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>School</th>
+                      <th>District</th>
+                      <th>Status</th>
+                      <th>
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schools.map((school) => (
+                      <tr key={school.id}>
+                        <td className="font-semibold text-slate-900">{school.name}</td>
+                        <td>{school.district}</td>
+                        <td>
+                          <StatusBadge status="active" />
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/admin/schools/${school.id}/edit`}
+                              aria-label={`Edit ${school.name}`}
+                              className={buttonClasses({ variant: 'ghost', size: 'sm' })}
+                            >
+                              <Pencil className="size-3.5" aria-hidden="true" /> Edit
+                            </Link>
+                            <form action={softDeleteSchool}>
+                              <input type="hidden" name="id" value={school.id} />
+                              <SubmitButton
+                                variant="danger"
+                                size="sm"
+                                aria-label={`Delete ${school.name}`}
+                              >
+                                Delete
+                              </SubmitButton>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
     </main>
   )
 }

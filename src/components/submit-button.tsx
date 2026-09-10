@@ -1,16 +1,29 @@
 'use client'
 
 import { useFormStatus } from 'react-dom'
+import { LoaderCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import type { ComponentProps } from 'react'
 
-export function SubmitButton({ children }: { children: React.ReactNode }) {
+export function SubmitButton({
+  children,
+  variant = 'primary',
+  className = '',
+  disabled,
+  ...props
+}: ComponentProps<typeof Button>) {
   const { pending } = useFormStatus()
   return (
-    <button
+    <Button
+      {...props}
       type="submit"
-      disabled={pending}
-      className="rounded bg-zinc-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+      disabled={disabled || pending}
+      aria-busy={pending}
+      variant={variant}
+      className={className}
     >
+      {pending && <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />}
       {pending ? 'Saving…' : children}
-    </button>
+    </Button>
   )
 }

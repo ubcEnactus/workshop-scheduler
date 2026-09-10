@@ -1,6 +1,10 @@
 import Link from 'next/link'
+import { ArrowLeft, CalendarDays, Clock3, Grid3X3 } from 'lucide-react'
 
 import { AvailabilityGrid } from '@/components/availability-grid'
+import { buttonClasses } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { StatCard } from '@/components/ui/stat-card'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
@@ -16,21 +20,47 @@ export default async function PAAvailabilityPage({ searchParams }: { searchParam
     where: { userId: user.id },
     select: { dayOfWeek: true, startMin: true },
   })
-  const checked = new Set(rows.map((r) => `${r.dayOfWeek}-${r.startMin}`))
+  const checked = new Set(rows.map((row) => `${row.dayOfWeek}-${row.startMin}`))
+  const availableDays = new Set(rows.map((row) => row.dayOfWeek)).size
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <Link
-        href="/pa"
-        className="text-xs font-medium text-zinc-600 underline-offset-4 hover:text-zinc-900 hover:underline dark:text-zinc-400 dark:hover:text-zinc-100"
-      >
-        ← Back to dashboard
-      </Link>
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">Weekly availability</h1>
-      <p className="mt-2 mb-8 text-sm text-zinc-600 dark:text-zinc-400">
-        Check the 30-minute slots when you&apos;re free to run workshops. Times are Pacific
-        (Vancouver) school hours.
-      </p>
+    <main className="page-content">
+      <PageHeader
+        eyebrow="Program assistant"
+        title="Weekly availability"
+        description="Choose the recurring school-hour blocks when you can facilitate. Admins use this schedule when assigning dated workshops."
+        actions={
+          <Link href="/pa" className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            Back to dashboard
+          </Link>
+        }
+      />
+
+      <section className="grid gap-4 sm:grid-cols-3" aria-label="Availability summary">
+        <StatCard
+          label="Saved slots"
+          value={rows.length}
+          detail="30 minutes each"
+          icon={<Grid3X3 />}
+          tone={rows.length > 0 ? 'green' : 'amber'}
+        />
+        <StatCard
+          label="Hours per week"
+          value={rows.length / 2}
+          detail="Recurring availability"
+          icon={<Clock3 />}
+          tone="blue"
+        />
+        <StatCard
+          label="Available days"
+          value={availableDays}
+          detail="Monday through Friday"
+          icon={<CalendarDays />}
+          tone="slate"
+        />
+      </section>
+
       <AvailabilityGrid
         checked={checked}
         action={saveAvailability}

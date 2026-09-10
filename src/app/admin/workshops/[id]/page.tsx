@@ -15,10 +15,24 @@ import { loadSchedule } from '@/lib/scheduling/store'
 import { WorkshopStaffing } from '@/components/workshop-staffing'
 import { WorkshopChanges } from '@/components/workshop-changes'
 import { ChangeSummary } from '@/components/change-summary'
+import { CalendarClock, History, MapPin, Users } from 'lucide-react'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
+import { StatCard } from '@/components/ui/stat-card'
+import { StatusBadge } from '@/components/ui/status-badge'
 
 function clock(date: Date) {
   const minute = vancouverMinuteOfDay(date)
   return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`
+}
+
+function dateLabel(date: Date) {
+  const [year, month, day] = vancouverDateKey(date).split('-').map(Number)
+  return new Intl.DateTimeFormat('en-CA', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)))
 }
 
 export default async function WorkshopDetail({
@@ -53,67 +67,134 @@ export default async function WorkshopDetail({
   const snapshot = await loadSchedule(prisma)
   const staffingWorkshop = snapshot.workshops.find((w) => w.id === id)
   return (
-    <main className="mx-auto w-full max-w-2xl space-y-6 px-6 py-12">
-      <Link href={`/admin/workshops?month=${month}`} className="text-sm underline">
-        Back to {month}
-      </Link>
-      <header>
-        <h1 className="text-3xl font-semibold">Workshop details</h1>
-        <p className="mt-2">
-          {workshop.classSection.name} · {workshop.classSection.school.name}
-        </p>
-        <p className="mt-2 text-sm">
-          {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)} · America/Vancouver
-        </p>
-        <p className="mt-2 text-sm">
-          Status: {workshop.status.toLowerCase()} · {workshop._count.assignments} PAs assigned
-        </p>
-      </header>
+    <main className="page-content">
+      <PageHeader
+        eyebrow={`${workshop.classSection.name} · ${workshop.classSection.school.name}`}
+        title="Workshop details"
+        description={
+          <>
+            <span>
+              {formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)} ·
+              America/Vancouver
+            </span>
+          </>
+        }
+        actions={
+          <StatusBadge
+            status={workshop.status}
+            label={`Status: ${workshop.status.toLowerCase()}`}
+          />
+        }
+      >
+        <Link
+          href={`/admin/workshops?month=${month}`}
+          className="text-sm font-medium text-slate-500 hover:text-slate-900"
+        >
+          ← Back to {month}
+        </Link>
+      </PageHeader>
       <FormError message={error} />
       {saved === '1' && (
-        <p role="status" className="rounded border p-3">
+        <p
+          role="status"
+          className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-800"
+        >
           Draft saved.
         </p>
       )}
-      {workshop.status === 'DRAFT' && workshop._count.assignments === 0 ? (
-        <WorkshopForm
-          action={updateWorkshop}
-          classes={classes}
-          month={month}
-          initial={{
-            id,
-            version: workshop.version,
-            classSectionId: workshop.classSectionId,
-            date: vancouverDateKey(workshop.scheduledStart),
-            startTime: clock(workshop.scheduledStart),
-            endTime: clock(workshop.scheduledEnd),
-            minPAs: workshop.minPAs,
-            maxPAs: workshop.maxPAs,
-          }}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Date and time"
+          value={dateLabel(workshop.scheduledStart)}
+          detail={formatInstantRange(workshop.scheduledStart, workshop.scheduledEnd)}
+          icon={<CalendarClock className="size-5" />}
+          tone="blue"
         />
+        <StatCard
+          label="School"
+          value={workshop.classSection.school.name}
+          detail="Workshop location"
+          icon={<MapPin className="size-5" />}
+          tone="slate"
+        />
+        <StatCard
+          label="Assigned PAs"
+          value={workshop._count.assignments}
+          detail={`${workshop.minPAs}–${workshop.maxPAs} needed`}
+          icon={<Users className="size-5" />}
+          tone={workshop._count.assignments < workshop.minPAs ? 'amber' : 'green'}
+        />
+      </div>
+      {workshop.status === 'DRAFT' && workshop._count.assignments === 0 ? (
+        <Panel
+          title="Edit draft"
+          description="Date, time, class, and staffing targets remain editable until the draft is staffed."
+        >
+          <WorkshopForm
+            action={updateWorkshop}
+            classes={classes}
+            month={month}
+            initial={{
+              id,
+              version: workshop.version,
+              classSectionId: workshop.classSectionId,
+              date: vancouverDateKey(workshop.scheduledStart),
+              startTime: clock(workshop.scheduledStart),
+              endTime: clock(workshop.scheduledEnd),
+              minPAs: workshop.minPAs,
+              maxPAs: workshop.maxPAs,
+            }}
+          />
+        </Panel>
       ) : (
-        <p>Only unstaffed draft workshops can be edited here.</p>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+          Only unstaffed draft workshops can be edited here.
+        </div>
       )}
-      {staffingWorkshop && <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} />}
-      {staffingWorkshop && <WorkshopChanges workshop={staffingWorkshop} snapshot={snapshot} />}
-      <section className="space-y-4 border-t pt-6">
-        <h2 className="text-xl font-semibold">Workshop history</h2>
+      {staffingWorkshop && (
+        <Panel>
+          <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} />
+        </Panel>
+      )}
+      {staffingWorkshop && (
+        <Panel>
+          <WorkshopChanges workshop={staffingWorkshop} snapshot={snapshot} />
+        </Panel>
+      )}
+      <Panel
+        title="Workshop history"
+        description="A durable record of applied schedule and staffing changes."
+        actions={<History className="size-5 text-slate-400" />}
+      >
         {workshop.events.length === 0 ? (
-          <p>No recorded changes.</p>
+          <div className="empty-state">
+            <History className="size-8 text-slate-300" /> No recorded changes.
+          </div>
         ) : (
-          workshop.events.map((event) => (
-            <article key={event.id} className="space-y-3 rounded border p-4">
-              <p className="font-medium">
-                {event.kind.toLowerCase()} · {event.actorName}
-              </p>
-              <p>
-                {formatInstantRange(event.createdAt, event.createdAt)} · {event.reason}
-              </p>
-              <ChangeSummary before={event.before} after={event.after} />
-            </article>
-          ))
+          <div className="space-y-4">
+            {workshop.events.map((event) => (
+              <article
+                key={event.id}
+                className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4 sm:p-5"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-900 capitalize">
+                      {event.kind.toLowerCase()}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {event.actorName} · {formatInstantRange(event.createdAt, event.createdAt)}
+                    </p>
+                  </div>
+                  <StatusBadge status={event.kind} />
+                </div>
+                <p className="text-sm text-slate-600">{event.reason}</p>
+                <ChangeSummary before={event.before} after={event.after} />
+              </article>
+            ))}
+          </div>
         )}
-      </section>
+      </Panel>
     </main>
   )
 }

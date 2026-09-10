@@ -39,17 +39,17 @@ export function ClassDefaults({
     },
   ]
   return (
-    <fieldset className="space-y-3 rounded border p-3">
-      <legend>Monthly workshop defaults</legend>
-      <p className="text-sm">
+    <fieldset className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+      <legend className="px-2 text-sm font-semibold text-slate-900">
+        Monthly workshop defaults
+      </legend>
+      <p className="mb-4 text-sm text-slate-500">
         Used for new plans. Changing defaults leaves existing workshops unchanged.
       </p>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="form-grid">
         {fields.map((field) => (
-          <div key={field.key}>
-            <label htmlFor={field.key} className="block text-sm">
-              {field.label}
-            </label>
+          <div key={field.key} className="field">
+            <label htmlFor={field.key}>{field.label}</label>
             <input
               id={field.key}
               name={field.key}
@@ -59,7 +59,7 @@ export function ClassDefaults({
               step="1"
               defaultValue={field.value}
               required
-              className="mt-1 w-full rounded border p-2"
+              className="input"
             />
           </div>
         ))}

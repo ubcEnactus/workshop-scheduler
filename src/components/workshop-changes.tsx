@@ -2,17 +2,18 @@ import type { ScheduleSnapshot, ScheduledWorkshop } from '@/lib/scheduling/eligi
 import { stageWorkshopChange } from '@/app/admin/workshops/changes/actions'
 import { vancouverDateKey, vancouverMinuteOfDay } from '@/lib/time'
 import { SubmitButton } from './submit-button'
+import { Ban, CalendarClock, CheckCircle2, RefreshCw } from 'lucide-react'
 function Fields({ workshop, kind }: { workshop: ScheduledWorkshop; kind: string }) {
   return (
     <>
       <input type="hidden" name="id" value={workshop.id} />
       <input type="hidden" name="version" value={workshop.version} />
       <input type="hidden" name="kind" value={kind} />
-      <label className="block" htmlFor={kind + '-reason'}>
+      <label className="block text-sm font-medium text-slate-700" htmlFor={kind + '-reason'}>
         Reason
       </label>
       <textarea
-        className="w-full rounded border p-2"
+        className="input min-h-24 resize-y"
         id={kind + '-reason'}
         name="reason"
         required
@@ -33,22 +34,30 @@ export function WorkshopChanges({
   snapshot: ScheduleSnapshot
 }) {
   if (!['DRAFT', 'PUBLISHED'].includes(workshop.status)) return null
+  const optionClass =
+    'group rounded-xl border border-slate-200 bg-white p-4 open:border-slate-300 open:shadow-sm'
+  const summaryClass =
+    'flex cursor-pointer list-none items-center gap-3 text-sm font-semibold text-slate-800'
   return (
-    <section className="space-y-5 border-t pt-6">
-      <h2 className="text-xl font-semibold">Change workshop</h2>
-      <p>Review changes before applying. Include a reason for the history.</p>
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold text-slate-950">Change workshop</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Review changes before applying. Include a reason for the history.
+        </p>
+      </div>
       {workshop.assignments.length > 0 && (
-        <details>
-          <summary className="cursor-pointer font-medium">Replace a PA</summary>
-          <form action={stageWorkshopChange} className="mt-3 space-y-3">
-            <label className="block">
+        <details className={optionClass}>
+          <summary className={summaryClass}>
+            <RefreshCw className="size-4 text-blue-600" /> Replace a PA
+          </summary>
+          <form
+            action={stageWorkshopChange}
+            className="mt-4 space-y-3 border-t border-slate-100 pt-4"
+          >
+            <label className="field">
               Assigned PA{' '}
-              <select
-                aria-label="Assigned PA"
-                name="oldPaId"
-                required
-                className="w-full rounded border p-2"
-              >
+              <select aria-label="Assigned PA" name="oldPaId" required className="input">
                 {workshop.assignments.map((a) => (
                   <option key={a.paId} value={a.paId}>
                     {snapshot.pas.find((p) => p.id === a.paId)?.name ??
@@ -58,13 +67,13 @@ export function WorkshopChanges({
                 ))}
               </select>
             </label>
-            <label className="block">
+            <label className="field">
               Replacement PA{' '}
               <select
                 aria-label="Replacement PA"
                 name="newPaId"
                 required
-                className="w-full rounded border p-2"
+                className="input"
                 defaultValue=""
               >
                 <option value="" disabled>
@@ -84,57 +93,74 @@ export function WorkshopChanges({
           </form>
         </details>
       )}
-      <details>
-        <summary className="cursor-pointer font-medium">Reschedule workshop</summary>
-        <form action={stageWorkshopChange} className="mt-3 space-y-3">
-          <label className="block">
-            New date{' '}
-            <input
-              aria-label="New date"
-              type="date"
-              name="date"
-              defaultValue={vancouverDateKey(workshop.scheduledStart)}
-              required
-              className="rounded border p-2"
-            />
-          </label>
-          <label className="block">
-            New start time{' '}
-            <input
-              aria-label="New start time"
-              type="time"
-              name="startTime"
-              defaultValue={clock(workshop.scheduledStart)}
-              required
-              className="rounded border p-2"
-            />
-          </label>
-          <label className="block">
-            New end time{' '}
-            <input
-              aria-label="New end time"
-              type="time"
-              name="endTime"
-              defaultValue={clock(workshop.scheduledEnd)}
-              required
-              className="rounded border p-2"
-            />
-          </label>
+      <details className={optionClass}>
+        <summary className={summaryClass}>
+          <CalendarClock className="size-4 text-amber-600" /> Reschedule workshop
+        </summary>
+        <form
+          action={stageWorkshopChange}
+          className="mt-4 space-y-3 border-t border-slate-100 pt-4"
+        >
+          <div className="form-grid">
+            <label className="field">
+              New date{' '}
+              <input
+                aria-label="New date"
+                type="date"
+                name="date"
+                defaultValue={vancouverDateKey(workshop.scheduledStart)}
+                required
+                className="input"
+              />
+            </label>
+            <label className="field">
+              New start time{' '}
+              <input
+                aria-label="New start time"
+                type="time"
+                name="startTime"
+                defaultValue={clock(workshop.scheduledStart)}
+                required
+                className="input"
+              />
+            </label>
+            <label className="field">
+              New end time{' '}
+              <input
+                aria-label="New end time"
+                type="time"
+                name="endTime"
+                defaultValue={clock(workshop.scheduledEnd)}
+                required
+                className="input"
+              />
+            </label>
+          </div>
           <Fields workshop={workshop} kind="RESCHEDULE" />
           <SubmitButton>Review reschedule</SubmitButton>
         </form>
       </details>
-      <details>
-        <summary className="cursor-pointer font-medium">Cancel workshop</summary>
-        <form action={stageWorkshopChange} className="mt-3 space-y-3">
+      <details className={optionClass}>
+        <summary className={summaryClass}>
+          <Ban className="size-4 text-red-500" /> Cancel workshop
+        </summary>
+        <form
+          action={stageWorkshopChange}
+          className="mt-4 space-y-3 border-t border-slate-100 pt-4"
+        >
           <Fields workshop={workshop} kind="CANCEL" />
           <SubmitButton>Review cancellation</SubmitButton>
         </form>
       </details>
       {workshop.status === 'PUBLISHED' && workshop.scheduledEnd.getTime() <= Date.now() && (
-        <details>
-          <summary className="cursor-pointer font-medium">Record completion</summary>
-          <form action={stageWorkshopChange} className="mt-3 space-y-3">
+        <details className={optionClass}>
+          <summary className={summaryClass}>
+            <CheckCircle2 className="size-4 text-green-600" /> Record completion
+          </summary>
+          <form
+            action={stageWorkshopChange}
+            className="mt-4 space-y-3 border-t border-slate-100 pt-4"
+          >
             <Fields workshop={workshop} kind="COMPLETE" />
             <SubmitButton>Review completion</SubmitButton>
           </form>

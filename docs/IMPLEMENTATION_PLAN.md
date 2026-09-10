@@ -2,11 +2,11 @@
 
 Reviewed 9 September 2026 against `main` at `07e17a0` and `origin/ENCT-Frontend` at `3aa1dd5`. This is the execution checklist; `DESIGN_BRIEF.md` remains the product brief.
 
-Current status: **iterations 0–5 complete; iteration 6 local rehearsal complete, hosted staging pending**. Work remains on `feature/dated-workshops` with a generic UI. No merge or deployment has been performed.
+Current status: **iterations 0–5 complete; iteration 6 local rehearsal complete, hosted staging pending; requested ENCT visual adaptation complete**. Work remains on `feature/dated-workshops`. Final UI verification on 10 September passed 46 unit tests, 62 PostgreSQL integration tests, all 16 browser tests, 51 desktop/mobile accessibility and geometry audits, lint, typecheck, formatting, and production build. All three GPT-5.6 implementation/review agents explicitly signed off. See `UI_REVIEW.md`. No merge or deployment has been performed.
 
-Final local verification after the later phases: **46 unit tests, 62 PostgreSQL integration tests and all 11 browser tests passed**, along with lint, typecheck, formatting, production build and `git diff --check`. Integration/browser runs each applied all eight migrations to fresh isolated databases and seeded twice. Production email guards, a workshop error boundary and a CI database/browser job were added for the rehearsal. See `PILOT_RUNBOOK.md` for recovery steps, dependency review, and the remaining hosted email/backup/restore/log checks.
+Previous phase verification on 9 September: **46 unit tests, 62 PostgreSQL integration tests and all 11 browser tests passed**, along with lint, typecheck, formatting, production build and `git diff --check`. Integration/browser runs each applied all eight migrations to fresh isolated databases and seeded twice. Production email guards, a workshop error boundary and a CI database/browser job were added for the rehearsal. See `PILOT_RUNBOOK.md` for recovery steps, dependency review, and the remaining hosted email/backup/restore/log checks.
 
-Build one demonstrable slice per iteration. Reach a manually scheduled, published workshop first, then make planning and staffing faster. Use plain forms, tables, links, and status messages throughout.
+Build one demonstrable slice per iteration. Reach a manually scheduled, published workshop first, then make planning and staffing faster. Keep forms, tables, links, and status messages accessible throughout. The user's 10 September request supersedes the initial generic-placeholder visual constraint.
 
 Existing development data is disposable seed/demo data. Recreate and reseed the isolated development database for the redesign; no legacy-data audit, archival workflow, reconciliation list, or backfill is required. Keep committed migration history and add a new migration for the schema changes.
 
@@ -115,7 +115,7 @@ Local rehearsal implementation and release notes: commit `4f6a785`. Hosted stagi
 
 - [x] Exercise multiple schools, classes with different cadences, uneven availability, insufficient PAs, quota zero, full quotas, locked rows, and adjacent-month conflicts. Run the complete workflow against a migrated test database.
 - [x] Add browser coverage for bulk creation, matching/reruns, publishing, and exceptions. Add direct Server Action authorization and concurrency tests; UI restrictions alone are insufficient.
-- [x] Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. Keep the visual design generic.
+- [x] Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. The initial generic design is followed by the requested ENCT visual adaptation below.
 - [x] Review repository deployment configuration, migration order and remaining dependency advisories. Add production email configuration guards, an error boundary, and CI database/browser rehearsal.
 - [ ] Verify the hosted staging configuration, actual backup/restore, real invite-only email delivery and hosted server error visibility. No staging environment or real-email run was available in this task; see `PILOT_RUNBOOK.md` for the remaining steps.
 
@@ -123,7 +123,7 @@ Local rehearsal implementation and release notes: commit `4f6a785`. Hosted stagi
 
 ## ENCT-Frontend reuse decisions
 
-Source review only: the branch was fetched and inspected, not merged or runtime-tested. It has 14 commits absent from `main` and lacks the cleanup commit. Paths below refer to that branch.
+Initial planning review: the branch was fetched and inspected, not merged or runtime-tested. It has 14 commits absent from `main` and lacks the cleanup commit. Paths below refer to that branch. The 10 September follow-up implements its visual language against the dated-workshop backend; see the follow-up checklist and `UI_REVIEW.md` for the resulting verification.
 
 | Component                                                                              | Decision                                                                                                                                                                                                                 |
 | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -137,6 +137,15 @@ Source review only: the branch was fetched and inspected, not merged or runtime-
 | Cycle screens, `cycle-grid.tsx`, `admin/modals.tsx`, teacher availability, PA check-in | Exclude from the pilot port. Cycle and teacher flows conflict with the design; check-in contains placeholder controls/data. The generic modal also needs keyboard/focus handling before reuse.                           |
 
 The branch contains backend work too, but it is not a ready replacement: `quota.ts` counts by cycle and stores a single quota on the user; `commute.ts` uses approximate home-community distances instead of gaps between assignments; `assignments.ts` creates confirmed assignments directly and its swap uses delete/recreate compensation rather than a database transaction. Keep these as reference material and implement the shared rules above.
+
+## Requested UI follow-up — complete, 10 September 2026
+
+- [x] Fetch and inspect `ENCT-Frontend` at `3aa1dd5`; adapt its navy/amber visual language, panels, tables, badges, icons, and existing landing image to the dated-workshop backend.
+- [x] Implement shared role shells and responsive navigation; restyle public/auth, admin management, scheduling/review, PA availability, and teacher views with real data and existing actions.
+- [x] Use three GPT-5.6 agents during implementation and independent cross-review. Iterate on source, screenshot, workflow, accessibility, and geometry feedback until all three explicitly sign off.
+- [x] Resolve availability interaction/overflow, ambiguous controls, pending/prerequisite feedback, contrast, mobile focus trapping, hidden-heading overflow, and table-scroll discoverability.
+- [x] Pass 46 unit, 62 integration, and 16 browser tests; inspect 51 desktop/mobile screen states with zero axe violations and zero document overflow. Pass lint, typecheck, formatting, production build, clean-install lockfile validation, and diff checks.
+- [x] Record implementation choices, review iterations, final signoffs, and remaining hosted-staging limits in `UI_REVIEW.md`.
 
 ## Working assumptions for the first implementation
 

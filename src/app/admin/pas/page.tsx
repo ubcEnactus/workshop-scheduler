@@ -1,6 +1,12 @@
 import Link from 'next/link'
+import { Pencil, UserRoundCheck } from 'lucide-react'
 
 import { FormError } from '@/components/form-error'
+import { SubmitButton } from '@/components/submit-button'
+import { buttonClasses } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
+import { StatusBadge } from '@/components/ui/status-badge'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 
@@ -13,71 +19,103 @@ export default async function PAsPage({
 }) {
   await requireRole('ADMIN')
   const { error } = await searchParams
-
   const pas = await prisma.user.findMany({
     where: { role: 'PA', deletedAt: null },
     orderBy: [{ name: 'asc' }, { email: 'asc' }],
   })
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <Link href="/admin" className="text-sm text-zinc-600 hover:underline">
-        ← Back to admin
-      </Link>
-      <h1 className="mt-4 text-3xl font-semibold tracking-tight">PAs</h1>
-      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-        Add an instructor before they request a magic link. Removed accounts cannot sign in.
-      </p>
+    <main className="page-content">
+      <PageHeader
+        eyebrow="People"
+        title="PAs"
+        description="Manage PA access before volunteers request a magic sign-in link."
+      />
+      <FormError message={error} />
 
-      <div className="mt-6">
-        <FormError message={error} />
-      </div>
-
-      <form action={createPA} className="mt-8 space-y-4">
-        <h2 className="text-lg font-medium">Add PA</h2>
-        <div>
-          <label className="block text-sm font-medium">Name</label>
-          <input name="name" required className="mt-1 block w-full rounded border px-3 py-2" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium">Email</label>
-          <input
-            name="email"
-            type="email"
-            required
-            className="mt-1 block w-full rounded border px-3 py-2"
-          />
-        </div>
-        <button
-          type="submit"
-          className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(19rem,0.75fr)_minmax(0,1.25fr)]">
+        <Panel
+          title="Add PA"
+          description="Removed accounts cannot sign in, but their scheduling history is retained."
         >
-          Add PA
-        </button>
-      </form>
+          <form action={createPA} className="space-y-5">
+            <div className="field">
+              <label htmlFor="pa-name">Name</label>
+              <input id="pa-name" name="name" required className="input" />
+            </div>
+            <div className="field">
+              <label htmlFor="pa-email">Email</label>
+              <input id="pa-email" name="email" type="email" required className="input" />
+            </div>
+            <SubmitButton>Add PA</SubmitButton>
+          </form>
+        </Panel>
 
-      <ul className="mt-12 divide-y">
-        {pas.length === 0 ? <li className="py-4 text-sm text-zinc-500">No PAs yet.</li> : null}
-        {pas.map((pa) => (
-          <li key={pa.id} className="flex items-center justify-between gap-4 py-3">
-            <div>
-              <p className="font-medium">{pa.name ?? 'Unnamed PA'}</p>
-              <p className="text-sm text-zinc-500">{pa.email}</p>
+        <Panel
+          title="PA directory"
+          description={`${pas.length} active PA${pas.length === 1 ? '' : 's'}`}
+        >
+          {pas.length === 0 ? (
+            <div className="empty-state">
+              <UserRoundCheck className="size-6" aria-hidden="true" />
+              <p>No PAs yet.</p>
             </div>
-            <div className="flex items-center gap-4">
-              <Link href={`/admin/pas/${pa.id}/edit`} className="text-sm hover:underline">
-                Edit
-              </Link>
-              <form action={softDeletePA}>
-                <input type="hidden" name="id" value={pa.id} />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
-                  Remove
-                </button>
-              </form>
-            </div>
-          </li>
-        ))}
-      </ul>
+          ) : (
+            <>
+              <p className="mb-3 text-xs font-medium text-slate-500 sm:hidden">
+                Scroll sideways to view all columns and actions.
+              </p>
+              <div className="table-scroll relative">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>PA</th>
+                      <th>Status</th>
+                      <th>
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pas.map((pa) => (
+                      <tr key={pa.id}>
+                        <td>
+                          <p className="font-semibold text-slate-900">{pa.name ?? 'Unnamed PA'}</p>
+                          <p className="text-xs text-slate-500">{pa.email}</p>
+                        </td>
+                        <td>
+                          <StatusBadge status="active" />
+                        </td>
+                        <td>
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/admin/pas/${pa.id}/edit`}
+                              aria-label={`Edit ${pa.name ?? pa.email}`}
+                              className={buttonClasses({ variant: 'ghost', size: 'sm' })}
+                            >
+                              <Pencil className="size-3.5" aria-hidden="true" /> Edit
+                            </Link>
+                            <form action={softDeletePA}>
+                              <input type="hidden" name="id" value={pa.id} />
+                              <SubmitButton
+                                variant="danger"
+                                size="sm"
+                                aria-label={`Remove ${pa.name ?? pa.email}`}
+                              >
+                                Remove
+                              </SubmitButton>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
     </main>
   )
 }

@@ -1,18 +1,25 @@
+import Link from 'next/link'
+import { Clock3 } from 'lucide-react'
+import { notFound } from 'next/navigation'
+
 import { ClassDefaults } from '@/components/class-defaults'
+import { FormError } from '@/components/form-error'
+import { SubmitButton } from '@/components/submit-button'
+import { buttonClasses } from '@/components/ui/button'
+import { PageHeader } from '@/components/ui/page-header'
+import { Panel } from '@/components/ui/panel'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { notFound } from 'next/navigation'
-import { FormError } from '@/components/form-error'
-import { updateClassSection, addMeeting, deleteMeeting } from '../../actions'
+import { DAY_LABELS } from '@/lib/time'
 
-const DAY_LABELS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+import { addMeeting, deleteMeeting, updateClassSection } from '../../actions'
 
 function minutesToTime(minutes: number): string {
-  const h = Math.floor(minutes / 60)
+  const hours = Math.floor(minutes / 60)
     .toString()
     .padStart(2, '0')
-  const m = (minutes % 60).toString().padStart(2, '0')
-  return `${h}:${m}`
+  const minutesPastHour = (minutes % 60).toString().padStart(2, '0')
+  return `${hours}:${minutesPastHour}`
 }
 
 export default async function EditClassPage({
@@ -25,10 +32,12 @@ export default async function EditClassPage({
   await requireRole('ADMIN')
   const { id } = await params
   const { error } = await searchParams
-
   const cls = await prisma.classSection.findUnique({
     where: { id },
-    include: { meetings: { orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }] } },
+    include: {
+      meetings: { orderBy: [{ dayOfWeek: 'asc' }, { startMinute: 'asc' }] },
+      school: true,
+    },
   })
   if (!cls) notFound()
 
@@ -42,142 +51,156 @@ export default async function EditClassPage({
   })
 
   return (
-    <main className="mx-auto max-w-2xl space-y-12 px-6 py-16">
-      <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Edit class</h1>
+    <main className="page-content">
+      <PageHeader
+        eyebrow="Classes"
+        title="Edit class"
+        description={`Manage details, planning defaults, and weekly meeting times for ${cls.name} at ${cls.school.name}.`}
+        actions={
+          <Link href="/admin/classes" className={buttonClasses({ variant: 'secondary' })}>
+            Back to classes
+          </Link>
+        }
+      />
+      <FormError message={error} />
 
-        <div className="mt-6">
-          <FormError message={error} />
-        </div>
-
-        <form action={updateClassSection} className="mt-8 space-y-4">
-          <input type="hidden" name="id" value={cls.id} />
-          <div>
-            <label className="block text-sm font-medium">Class name</label>
-            <input
-              name="name"
-              defaultValue={cls.name}
-              required
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Subject (optional)</label>
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
+        <Panel
+          title="Class details"
+          description="Changes to defaults apply to future planning only."
+        >
+          <form action={updateClassSection} className="space-y-5">
+            <input type="hidden" name="id" value={cls.id} />
+            <div className="field">
+              <label htmlFor="class-name">Class name</label>
               <input
-                name="subject"
-                defaultValue={cls.subject ?? ''}
-                className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium">Grade (optional)</label>
-              <input
-                name="grade"
-                defaultValue={cls.grade ?? ''}
-                className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium">Teacher</label>
-            <select
-              name="teacherId"
-              defaultValue={cls.teacherId}
-              required
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            >
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.deletedAt
-                    ? `${t.name} (removed)`
-                    : `${t.name} · ${t.school?.name ?? 'No school'}`}
-                </option>
-              ))}
-            </select>
-          </div>
-          <ClassDefaults initial={cls} />
-          <div className="flex items-center gap-4">
-            <button
-              type="submit"
-              className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
-            >
-              Save
-            </button>
-            <a href="/admin/classes" className="text-sm text-zinc-600 hover:underline">
-              Cancel
-            </a>
-          </div>
-        </form>
-      </div>
-
-      <div>
-        <h2 className="text-lg font-medium">Meeting times</h2>
-
-        <ul className="mt-4 divide-y">
-          {cls.meetings.length === 0 && (
-            <li className="py-3 text-sm text-zinc-500">No meeting times yet.</li>
-          )}
-          {cls.meetings.map((m) => (
-            <li key={m.id} className="flex items-center justify-between py-3">
-              <span className="text-sm">
-                {DAY_LABELS[m.dayOfWeek]} · {minutesToTime(m.startMinute)}–
-                {minutesToTime(m.endMinute)}
-              </span>
-              <form action={deleteMeeting}>
-                <input type="hidden" name="id" value={m.id} />
-                <button type="submit" className="text-sm text-red-600 hover:underline">
-                  Remove
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-
-        <form action={addMeeting} className="mt-6 space-y-4">
-          <input type="hidden" name="classSectionId" value={cls.id} />
-          <h3 className="text-sm font-medium">Add meeting time</h3>
-          <div>
-            <label className="block text-sm font-medium">Day</label>
-            <select
-              name="dayOfWeek"
-              required
-              className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-            >
-              {DAY_LABELS.map((label, i) => (
-                <option key={i} value={i}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium">Start time</label>
-              <input
-                name="startTime"
-                type="time"
+                id="class-name"
+                name="name"
+                defaultValue={cls.name}
                 required
-                className="mt-1 block w-full rounded border px-3 py-2 text-sm"
+                className="input"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium">End time</label>
-              <input
-                name="endTime"
-                type="time"
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="class-subject">Subject (optional)</label>
+                <input
+                  id="class-subject"
+                  name="subject"
+                  defaultValue={cls.subject ?? ''}
+                  className="input"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="class-grade">Grade (optional)</label>
+                <input
+                  id="class-grade"
+                  name="grade"
+                  defaultValue={cls.grade ?? ''}
+                  className="input"
+                />
+              </div>
+            </div>
+            <div className="field">
+              <label htmlFor="class-teacher">Teacher</label>
+              <select
+                id="class-teacher"
+                name="teacherId"
+                defaultValue={cls.teacherId}
                 required
-                className="mt-1 block w-full rounded border px-3 py-2 text-sm"
-              />
+                className="input"
+              >
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.deletedAt
+                      ? `${teacher.name} (removed)`
+                      : `${teacher.name} · ${teacher.school?.name ?? 'No school'}`}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-          <button
-            type="submit"
-            className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-700"
+            <ClassDefaults initial={cls} />
+            <div className="flex flex-wrap items-center gap-3">
+              <SubmitButton>Save</SubmitButton>
+              <Link href="/admin/classes" className={buttonClasses({ variant: 'ghost' })}>
+                Cancel
+              </Link>
+            </div>
+          </form>
+        </Panel>
+
+        <div className="space-y-6">
+          <Panel
+            title="Meeting times"
+            description="Weekly Vancouver times that admins use when planning workshops."
           >
-            Add time
-          </button>
-        </form>
+            {cls.meetings.length === 0 ? (
+              <div className="empty-state">
+                <Clock3 className="size-6" aria-hidden="true" />
+                <p>No meeting times yet.</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-slate-100">
+                {cls.meetings.map((meeting) => (
+                  <li
+                    key={meeting.id}
+                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <p className="text-sm font-semibold text-slate-900">
+                      {`${DAY_LABELS[meeting.dayOfWeek]} · ${minutesToTime(meeting.startMinute)}–${minutesToTime(meeting.endMinute)}`}
+                    </p>
+                    <form action={deleteMeeting}>
+                      <input type="hidden" name="id" value={meeting.id} />
+                      <SubmitButton
+                        variant="danger"
+                        size="sm"
+                        aria-label={`Remove ${DAY_LABELS[meeting.dayOfWeek]} ${minutesToTime(meeting.startMinute)}–${minutesToTime(meeting.endMinute)}`}
+                      >
+                        Remove
+                      </SubmitButton>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          <Panel
+            title="Add meeting time"
+            description="Add each recurring weekday block when this class can host a workshop."
+          >
+            <form action={addMeeting} className="space-y-5">
+              <input type="hidden" name="classSectionId" value={cls.id} />
+              <div className="field">
+                <label htmlFor="meeting-day">Day</label>
+                <select id="meeting-day" name="dayOfWeek" required className="input">
+                  {DAY_LABELS.map((label, index) => (
+                    <option key={label} value={index}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="meeting-start">Start time</label>
+                  <input
+                    id="meeting-start"
+                    name="startTime"
+                    type="time"
+                    required
+                    className="input"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="meeting-end">End time</label>
+                  <input id="meeting-end" name="endTime" type="time" required className="input" />
+                </div>
+              </div>
+              <SubmitButton>Add time</SubmitButton>
+            </form>
+          </Panel>
+        </div>
       </div>
     </main>
   )
