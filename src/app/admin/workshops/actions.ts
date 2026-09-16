@@ -4,8 +4,9 @@ import { Prisma } from '@prisma/client'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
-import { monthSchema, workshopSchema, workshopVersionSchema } from '@/lib/schemas/workshops'
-import { vancouverMonthKey } from '@/lib/time'
+import { workshopSchema, workshopVersionSchema } from '@/lib/schemas/workshops'
+import type { WorkshopFormState } from '@/lib/schemas/form-state'
+import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import {
   scheduleTransaction,
   validateSlot,
@@ -23,24 +24,15 @@ function readInput(form: FormData) {
   )
 }
 
-function handleError(error: unknown, target: string): never {
-  if (error instanceof WorkshopError)
-    redirect(`${target}?error=${encodeURIComponent(error.message)}`)
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-    redirect(`${target}?error=The+schedule+changed.+Reload+and+try+again.`)
-  }
-  throw error
-}
-
-export async function createWorkshop(formData: FormData) {
-  await requireRole('ADMIN')
+async function createDraft(formData: FormData) {
   const parsed = readInput(formData)
-  const requestedMonth = monthSchema.safeParse(formData.get('month'))
-  const month = requestedMonth.success ? requestedMonth.data : vancouverMonthKey()
   if (!parsed.success)
-    redirect(
-      `/admin/workshops?month=${month}&error=${encodeURIComponent(parsed.error.issues[0].message)}`
-    )
+    return {
+      error: parsed.error.issues[0].message,
+      fields: Object.fromEntries(
+        parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message])
+      ),
+    }
   let workshop
   try {
     workshop = await scheduleTransaction(async (tx) => {
@@ -56,26 +48,29 @@ export async function createWorkshop(formData: FormData) {
         error instanceof WorkshopError
           ? error.message
           : 'The schedule changed. Reload and try again.'
-      redirect(`/admin/workshops?month=${month}&error=${encodeURIComponent(message)}`)
+      return { error: message }
     }
     throw error
   }
   revalidatePath('/admin/workshops')
-  redirect(`/admin/workshops/${workshop.id}?saved=1`)
+  return { id: workshop.id }
 }
 
-export async function updateWorkshop(formData: FormData) {
-  await requireRole('ADMIN')
+async function updateDraft(formData: FormData) {
   const identity = workshopVersionSchema.safeParse({
     id: formData.get('id'),
     version: formData.get('version'),
   })
-  if (!identity.success)
-    redirect('/admin/workshops?error=Invalid+workshop+version.+Reload+and+try+again.')
+  if (!identity.success) return { error: 'Invalid workshop version. Reload and try again.' }
   const target = `/admin/workshops/${identity.data.id}`
   const parsed = readInput(formData)
   if (!parsed.success)
-    redirect(`${target}?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
+    return {
+      error: parsed.error.issues[0].message,
+      fields: Object.fromEntries(
+        parsed.error.issues.map((issue) => [String(issue.path[0]), issue.message])
+      ),
+    }
   try {
     await scheduleTransaction(async (tx) => {
       const existing = await tx.workshop.findUnique({
@@ -96,9 +91,55 @@ export async function updateWorkshop(formData: FormData) {
         throw new WorkshopError('This workshop changed. Reload before editing it again.')
     })
   } catch (error) {
-    handleError(error, target)
+    if (error instanceof WorkshopError) return { error: error.message }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+      return { error: 'The schedule changed. Reload and try again.' }
+    throw error
   }
   revalidatePath('/admin/workshops')
   revalidatePath(target)
-  redirect(`${target}?saved=1`)
+  return { id: identity.data.id }
+}
+
+export async function createWorkshop(formData: FormData) {
+  await requireRole('ADMIN')
+  const result = await createDraft(formData)
+  const context = readSchedulingContext(formData)
+  if (result.error)
+    redirect(
+      schedulingHref('/admin/workshops', context, { create: '1' }) +
+        '&error=' +
+        encodeURIComponent(result.error)
+    )
+  redirect(schedulingHref('/admin/workshops/' + result.id, context, { saved: '1' }))
+}
+export async function updateWorkshop(formData: FormData) {
+  await requireRole('ADMIN')
+  const result = await updateDraft(formData)
+  const identity = workshopVersionSchema.safeParse(Object.fromEntries(formData))
+  const target = identity.success ? '/admin/workshops/' + identity.data.id : '/admin/workshops'
+  if (result.error) redirect(target + '?error=' + encodeURIComponent(result.error))
+  redirect(schedulingHref(target, readSchedulingContext(formData), { saved: '1' }))
+}
+export async function createWorkshopForm(
+  _state: WorkshopFormState,
+  formData: FormData
+): Promise<WorkshopFormState> {
+  await requireRole('ADMIN')
+  const result = await createDraft(formData)
+  if (result.error) return result
+  redirect(
+    schedulingHref('/admin/workshops/' + result.id, readSchedulingContext(formData), { saved: '1' })
+  )
+}
+export async function updateWorkshopForm(
+  _state: WorkshopFormState,
+  formData: FormData
+): Promise<WorkshopFormState> {
+  await requireRole('ADMIN')
+  const result = await updateDraft(formData)
+  if (result.error) return result
+  redirect(
+    schedulingHref('/admin/workshops/' + result.id, readSchedulingContext(formData), { saved: '1' })
+  )
 }

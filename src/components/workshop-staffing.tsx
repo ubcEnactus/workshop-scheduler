@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { schedulingHref, type SchedulingContext } from '@/lib/scheduling/navigation'
 import {
   eligibility,
   staffingProblems,
@@ -11,20 +12,32 @@ import { SubmitButton } from './submit-button'
 import { AlertTriangle, LockKeyhole, ShieldCheck, UserPlus, Users } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/status-badge'
 
-function Identity({ workshop }: { workshop: ScheduledWorkshop }) {
+function Identity({
+  workshop,
+  context,
+}: {
+  workshop: ScheduledWorkshop
+  context?: SchedulingContext
+}) {
   return (
     <>
       <input type="hidden" name="id" value={workshop.id} />
       <input type="hidden" name="version" value={workshop.version} />
+      {context &&
+        Object.entries(context).map(([key, value]) => (
+          <input key={key} type="hidden" name={key} value={value} />
+        ))}
     </>
   )
 }
 export function WorkshopStaffing({
   workshop,
   snapshot,
+  context,
 }: {
   workshop: ScheduledWorkshop
   snapshot: ScheduleSnapshot
+  context?: SchedulingContext
 }) {
   const problems = ['DRAFT', 'PUBLISHED'].includes(workshop.status)
     ? staffingProblems(snapshot, workshop)
@@ -48,7 +61,10 @@ export function WorkshopStaffing({
         />
       </div>
       <Link
-        href={'/admin/staffing?month=' + vancouverMonthKey(workshop.scheduledStart)}
+        href={schedulingHref(
+          '/admin/staffing',
+          context ?? { month: vancouverMonthKey(workshop.scheduledStart) }
+        )}
         className="inline-flex text-sm font-semibold text-[#1e2a4a] hover:underline"
       >
         Manage monthly quotas and assignment gap
@@ -83,7 +99,7 @@ export function WorkshopStaffing({
                 </span>
                 {workshop.status === 'DRAFT' && (
                   <form action={removePA}>
-                    <Identity workshop={workshop} />
+                    <Identity workshop={workshop} context={context} />
                     <input type="hidden" name="paId" value={a.paId} />
                     <SubmitButton>Remove PA</SubmitButton>
                   </form>
@@ -156,7 +172,7 @@ export function WorkshopStaffing({
             <span className="flex items-center gap-2 text-sm font-semibold text-green-800">
               <ShieldCheck className="size-4" /> Ready for the official schedule?
             </span>
-            <SubmitButton>Publish workshop</SubmitButton>
+            <SubmitButton disabled={problems.length > 0}>Publish workshop</SubmitButton>
           </form>
         </>
       )}

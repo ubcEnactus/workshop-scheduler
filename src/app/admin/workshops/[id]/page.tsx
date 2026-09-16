@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
@@ -10,7 +11,7 @@ import {
   vancouverMinuteOfDay,
   vancouverMonthKey,
 } from '@/lib/time'
-import { updateWorkshop } from '../actions'
+import { updateWorkshopForm } from '../actions'
 import { loadSchedule } from '@/lib/scheduling/store'
 import { WorkshopStaffing } from '@/components/workshop-staffing'
 import { WorkshopChanges } from '@/components/workshop-changes'
@@ -40,11 +41,12 @@ export default async function WorkshopDetail({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string; saved?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   await requireRole('ADMIN')
   const { id } = await params
-  const { error, saved } = await searchParams
+  const query = await searchParams
+  const { error, saved } = query
   const workshop = await prisma.workshop.findFirst({
     where: { id, classSection: { school: { deletedAt: null }, teacher: { deletedAt: null } } },
     include: {
@@ -64,6 +66,7 @@ export default async function WorkshopDetail({
     orderBy: { name: 'asc' },
   })
   const month = vancouverMonthKey(workshop.scheduledStart)
+  const context = parseSchedulingContext(query, month)
   const snapshot = await loadSchedule(prisma)
   const staffingWorkshop = snapshot.workshops.find((w) => w.id === id)
   return (
@@ -87,10 +90,10 @@ export default async function WorkshopDetail({
         }
       >
         <Link
-          href={`/admin/workshops?month=${month}`}
+          href={schedulingHref('/admin/workshops', context)}
           className="text-sm font-medium text-slate-500 hover:text-slate-900"
         >
-          ← Back to {month}
+          ← Back to {context.month}
         </Link>
       </PageHeader>
       <FormError message={error} />
@@ -131,9 +134,26 @@ export default async function WorkshopDetail({
           description="Date, time, class, and staffing targets remain editable until the draft is staffed."
         >
           <WorkshopForm
-            action={updateWorkshop}
-            classes={classes}
+            action={updateWorkshopForm}
+            classes={classes
+              .filter((c) => c.teacher.schoolId === c.schoolId)
+              .map((c) => ({
+                ...c,
+                busy: snapshot.workshops
+                  .filter(
+                    (w) =>
+                      w.id !== id &&
+                      w.status !== 'CANCELLED' &&
+                      classes.find((other) => other.id === w.classSectionId)?.teacherId ===
+                        c.teacherId
+                  )
+                  .map((w) => ({
+                    start: w.scheduledStart.toISOString(),
+                    end: w.scheduledEnd.toISOString(),
+                  })),
+              }))}
             month={month}
+            context={context}
             initial={{
               id,
               version: workshop.version,
@@ -153,7 +173,7 @@ export default async function WorkshopDetail({
       )}
       {staffingWorkshop && (
         <Panel>
-          <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} />
+          <WorkshopStaffing workshop={staffingWorkshop} snapshot={snapshot} context={context} />
         </Panel>
       )}
       {staffingWorkshop && (

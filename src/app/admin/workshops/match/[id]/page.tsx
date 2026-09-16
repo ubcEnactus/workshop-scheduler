@@ -1,8 +1,9 @@
 import Link from 'next/link'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { matchPlanSchema } from '@/lib/schemas/matching'
+import { matchPlanSchema, matchingScopeSchema } from '@/lib/schemas/matching'
 import { formatInstantRange } from '@/lib/time'
 import { FormError } from '@/components/form-error'
 import { SubmitButton } from '@/components/submit-button'
@@ -16,13 +17,22 @@ export default async function MatchReview({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const actor = await requireRole('ADMIN')
   const { id } = await params
   const query = await searchParams
   const preview = await prisma.matchingPreview.findFirst({ where: { id, actorId: actor.id } })
   if (!preview) notFound()
+  const context = { ...parseSchedulingContext(query, preview.month), month: preview.month }
+  const retry =
+    schedulingHref('/admin/workshops/match', context, { selection: '1' }) +
+    '&' +
+    new URLSearchParams(
+      matchingScopeSchema
+        .parse({ month: preview.month, classIds: preview.classIds })
+        .classIds.map((id) => ['classId', id])
+    ).toString()
   const plan = matchPlanSchema.parse(preview.plan)
   const [workshops, pas] = await Promise.all([
     prisma.workshop.findMany({
@@ -54,10 +64,7 @@ export default async function MatchReview({
         title="Review PA assignments"
         description="Compare current and proposed staffing before applying the plan. Workshop dates and times stay unchanged."
       >
-        <Link
-          className="text-sm font-medium text-slate-500 hover:text-slate-900"
-          href={'/admin/workshops/match?month=' + preview.month}
-        >
+        <Link className="text-sm font-medium text-slate-500 hover:text-slate-900" href={retry}>
           ← New staffing preview
         </Link>
       </PageHeader>
@@ -126,7 +133,7 @@ export default async function MatchReview({
                         <>
                           <Link
                             className="font-semibold text-slate-900 hover:text-[#1e2a4a] hover:underline"
-                            href={'/admin/workshops/' + w.id}
+                            href={schedulingHref('/admin/workshops/' + w.id, context)}
                           >
                             {w.classSection.name} · {w.classSection.school.name}
                           </Link>
@@ -182,6 +189,9 @@ export default async function MatchReview({
           className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-5"
         >
           <input type="hidden" name="id" value={id} />
+          {Object.entries(context).map(([key, value]) => (
+            <input type="hidden" key={key} name={key} value={value} />
+          ))}
           <div>
             <p className="font-semibold text-green-900">Ready to update the draft schedule?</p>
             <p className="mt-1 text-sm text-green-700">Protected assignments stay unchanged.</p>

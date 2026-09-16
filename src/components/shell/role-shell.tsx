@@ -1,6 +1,7 @@
 'use client'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   CalendarDays,
@@ -58,6 +59,8 @@ export function RoleShell({
   children: ReactNode
 }) {
   const pathname = usePathname()
+  const search = useSearchParams()
+  const context = parseSchedulingContext(Object.fromEntries(search))
   const dialog = useRef<HTMLDialogElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
@@ -131,7 +134,7 @@ export function RoleShell({
                 .map((item) => (
                   <li key={item.href}>
                     <Link
-                      href={item.href}
+                      href={role === 'ADMIN' ? schedulingHref(item.href, context) : item.href}
                       onClick={mobile ? closeMenu : undefined}
                       aria-current={active.href === item.href ? 'page' : undefined}
                       className={

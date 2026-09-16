@@ -8,20 +8,29 @@ import { eligibility } from '@/lib/scheduling/eligibility'
 import { matchWorkshops } from '@/lib/scheduling/matcher'
 import { scheduleHash } from '@/lib/scheduling/matching-preview'
 import { vancouverMonthKey } from '@/lib/time'
+import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 
 function fail(error: unknown, path: string): never {
   if (error instanceof SchedulingError)
-    redirect(path + '?error=' + encodeURIComponent(error.message))
+    redirect(path + (path.includes('?') ? '&' : '?') + 'error=' + encodeURIComponent(error.message))
   throw error
 }
 export async function previewMatching(formData: FormData) {
   const actor = await requireRole('ADMIN')
+  const context = readSchedulingContext(formData)
+  const selection = new URLSearchParams()
+  for (const id of formData.getAll('classId'))
+    if (typeof id === 'string' && id.length <= 200) selection.append('classId', id)
+  const retry =
+    schedulingHref('/admin/workshops/match', context, { selection: '1' }) +
+    '&' +
+    selection.toString()
   const parsed = matchingScopeSchema.safeParse({
     month: formData.get('month'),
     classIds: formData.getAll('classId'),
   })
   if (!parsed.success)
-    redirect('/admin/workshops/match?error=' + encodeURIComponent(parsed.error.issues[0].message))
+    redirect(retry + '&error=' + encodeURIComponent(parsed.error.issues[0].message))
   let id: string
   try {
     id = await scheduleTransaction(async (tx) => {
@@ -50,9 +59,9 @@ export async function previewMatching(formData: FormData) {
       return preview.id
     })
   } catch (error) {
-    fail(error, '/admin/workshops/match')
+    fail(error, retry)
   }
-  redirect('/admin/workshops/match/' + id)
+  redirect(schedulingHref('/admin/workshops/match/' + id, context))
 }
 export async function applyMatching(formData: FormData) {
   const actor = await requireRole('ADMIN')
@@ -125,9 +134,15 @@ export async function applyMatching(formData: FormData) {
       return preview.month
     })
   } catch (error) {
-    fail(error, '/admin/workshops/match/' + id)
+    fail(error, schedulingHref('/admin/workshops/match/' + id, readSchedulingContext(formData)))
   }
   revalidatePath('/admin/workshops', 'layout')
   revalidatePath('/admin/staffing')
-  redirect('/admin/workshops?month=' + month + '&matched=1')
+  redirect(
+    schedulingHref(
+      '/admin/workshops',
+      { ...readSchedulingContext(formData), month },
+      { matched: '1' }
+    )
+  )
 }

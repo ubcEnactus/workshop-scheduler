@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
+import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { scheduleTransaction } from '@/lib/scheduling/store'
 import {
   classMeetingIdSchema,
@@ -124,7 +125,11 @@ export async function updateClassSection(formData: FormData) {
     }
     throw error
   }
-  redirect('/admin/classes')
+  redirect(
+    formData.has('month')
+      ? schedulingHref('/admin/classes', readSchedulingContext(formData))
+      : '/admin/classes'
+  )
 }
 
 export async function deleteClassSection(formData: FormData) {

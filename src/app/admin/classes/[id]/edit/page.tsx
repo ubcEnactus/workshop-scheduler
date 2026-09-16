@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { Clock3 } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
@@ -27,11 +28,13 @@ export default async function EditClassPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   await requireRole('ADMIN')
   const { id } = await params
-  const { error } = await searchParams
+  const query = await searchParams
+  const { error } = query
+  const context = parseSchedulingContext(query)
   const cls = await prisma.classSection.findUnique({
     where: { id },
     include: {
@@ -57,12 +60,18 @@ export default async function EditClassPage({
         title="Edit class"
         description={`Manage details, planning defaults, and weekly availability for ${cls.name} at ${cls.school.name}.`}
         actions={
-          <Link href="/admin/classes" className={buttonClasses({ variant: 'secondary' })}>
+          <Link
+            href={schedulingHref('/admin/classes', context)}
+            className={buttonClasses({ variant: 'secondary' })}
+          >
             Back to classes
           </Link>
         }
       />
       <FormError message={error} />
+      <Link className="text-sm underline" href={schedulingHref('/admin/workshops/plan', context)}>
+        Return to monthly planning
+      </Link>
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)]">
         <Panel
@@ -70,6 +79,14 @@ export default async function EditClassPage({
           description="Changes to defaults apply to future planning only."
         >
           <form action={updateClassSection} className="space-y-5">
+            {Object.entries(context).map(([key, value]) => (
+              <input
+                key={key}
+                type="hidden"
+                name={key === 'classSectionId' ? 'returnClassSectionId' : key}
+                value={value}
+              />
+            ))}
             <input type="hidden" name="id" value={cls.id} />
             <div className="field">
               <label htmlFor="class-name">Class name</label>
@@ -150,6 +167,14 @@ export default async function EditClassPage({
                       {`${DAY_LABELS[meeting.dayOfWeek]} · ${minutesToTime(meeting.startMinute)}–${minutesToTime(meeting.endMinute)}`}
                     </p>
                     <form action={deleteMeeting}>
+                      {Object.entries(context).map(([key, value]) => (
+                        <input
+                          key={key}
+                          type="hidden"
+                          name={key === 'classSectionId' ? 'returnClassSectionId' : key}
+                          value={value}
+                        />
+                      ))}
                       <input type="hidden" name="id" value={meeting.id} />
                       <SubmitButton
                         variant="danger"
@@ -170,6 +195,14 @@ export default async function EditClassPage({
             description="Add each recurring weekday block when this class can host a workshop."
           >
             <form action={addMeeting} className="space-y-5">
+              {Object.entries(context).map(([key, value]) => (
+                <input
+                  key={key}
+                  type="hidden"
+                  name={key === 'classSectionId' ? 'returnClassSectionId' : key}
+                  value={value}
+                />
+              ))}
               <input type="hidden" name="classSectionId" value={cls.id} />
               <div className="field">
                 <label htmlFor="meeting-day">Day</label>

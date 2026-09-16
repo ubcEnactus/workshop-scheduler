@@ -221,7 +221,7 @@ test('mobile navigation supports keyboard, active routes and sign out', async ({
   await expect(menu).toBeFocused()
   await menu.click()
   await dialog.getByRole('link', { name: 'Plan a month', exact: true }).click()
-  await expect(page).toHaveURL(/\/admin\/workshops\/plan$/)
+  await expect(page).toHaveURL(/\/admin\/workshops\/plan\?month=/)
   await expect(dialog).not.toBeVisible()
   await menu.click()
   await expect(dialog.getByRole('link', { name: 'Plan a month', exact: true })).toHaveAttribute(

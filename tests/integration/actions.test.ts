@@ -45,7 +45,9 @@ describe('authorization at the Server Action boundary', () => {
     async (_name, action) => {
       for (const user of [fixtures.pa, fixtures.teacher]) {
         sessionAuth.mockResolvedValue({ user: { id: user.id } })
-        await expect(action(new FormData())).rejects.toThrow('REDIRECT:/403')
+        await expect(
+          Reflect.apply(action, undefined, [new FormData(), new FormData()])
+        ).rejects.toThrow('REDIRECT:/403')
       }
     }
   )

@@ -1,135 +1,336 @@
-import { Check, Clock3, Info } from 'lucide-react'
-
+'use client'
+import { ReadyFields } from './ready-fields'
+import { useActionState, useState } from 'react'
 import { SubmitButton } from '@/components/submit-button'
-import { Panel } from '@/components/ui/panel'
-import { SLOT_STARTS } from '@/lib/schemas/availability'
+import { Button } from '@/components/ui/button'
+import { SLOT_STARTS, DAY_END_MIN } from '@/lib/schemas/availability'
 import { DAY_LABELS, formatSlotRange } from '@/lib/time'
+import { addAvailabilityRange, copyAvailabilityDays } from '@/lib/availability-editor'
+import { coalesceAvailability } from '@/lib/scheduling/availability'
 
-type AvailabilityGridProps = {
-  /** Keys of already-saved slots, as `${dayOfWeek}-${startMin}`. */
+export function AvailabilityGrid({
+  checked,
+  action,
+  saved,
+  error,
+}: {
   checked: ReadonlySet<string>
-  action: (formData: FormData) => Promise<void>
+  action: (state: { error?: string }, form: FormData) => Promise<{ error?: string }>
   saved?: boolean
   error?: boolean
-}
-
-/**
- * Weekly availability checkbox grid (Mon–Fri × 30-minute school-hour slots).
- * Only checked boxes are submitted, so saving replaces the complete saved set.
- */
-export function AvailabilityGrid({ checked, action, saved, error }: AvailabilityGridProps) {
+}) {
+  const [slots, setSlots] = useState(new Set(checked))
+  const [day, setDay] = useState(0)
+  const [start, setStart] = useState(540),
+    [end, setEnd] = useState(720)
+  const [days, setDays] = useState<number[]>([])
+  const [undo, setUndo] = useState<Set<string> | null>(null)
+  const [notice, setNotice] = useState(''),
+    [rangeError, setRangeError] = useState('')
+  const [state, formAction, pending] = useActionState(action, {})
+  const dirty = [...slots].sort().join(',') !== [...checked].sort().join(',')
+  const windows = coalesceAvailability(
+    [...slots].map((key) => {
+      const [dayOfWeek, startMin] = key.split('-').map(Number)
+      return { userId: 'current', dayOfWeek, startMin }
+    })
+  )
+  function update(next: Set<string>, message: string) {
+    setUndo(new Set(slots))
+    setSlots(next)
+    setNotice(message)
+    setRangeError('')
+  }
+  function clock(minutes: number) {
+    return (
+      String(Math.floor(minutes / 60)).padStart(2, '0') +
+      ':' +
+      String(minutes % 60).padStart(2, '0')
+    )
+  }
   return (
-    <form action={action} className="w-full max-w-full min-w-0">
-      <Panel
-        title="Weekly availability"
-        description="Select every 30-minute block when you are available. All times are Pacific (Vancouver)."
-        actions={
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-            <Clock3 className="size-3.5" aria-hidden="true" />
-            {checked.size} saved {checked.size === 1 ? 'slot' : 'slots'}
-          </span>
-        }
-      >
-        {saved ? (
-          <div
-            role="status"
-            className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
-          >
-            <Check className="size-4 shrink-0" aria-hidden="true" />
-            Availability saved.
-          </div>
-        ) : null}
-        {error ? (
-          <div
-            role="alert"
-            className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
-          >
-            Couldn&apos;t save availability — the submission was invalid. Try again.
-          </div>
-        ) : null}
-
-        <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600">
-          <span className="flex items-center gap-2">
-            <span
-              className="size-3 rounded border border-[#1e2a4a] bg-[#1e2a4a]"
-              aria-hidden="true"
-            />
-            Available
-          </span>
-          <span className="flex items-center gap-2">
-            <span className="size-3 rounded border border-slate-300 bg-white" aria-hidden="true" />
-            Not available
-          </span>
-          <span className="flex items-center gap-1.5 text-slate-500">
-            <Info className="size-3.5" aria-hidden="true" />
-            You can change and save this schedule at any time.
-          </span>
-        </div>
-
-        <p className="mb-2 text-xs font-medium text-slate-600 sm:hidden">
-          Scroll horizontally to see the full week.
+    <form action={formAction} className="space-y-4">
+      <ReadyFields disabled={pending}>
+        <p className="text-sm text-slate-600">
+          {slots.size / 2} hours per week · {new Set([...slots].map((s) => s.split('-')[0])).size}{' '}
+          weekdays · Vancouver time
         </p>
-        <div className="table-scroll w-full min-w-0 border border-slate-200">
-          <table className="w-full min-w-[680px] table-fixed border-collapse text-sm">
-            <caption className="sr-only">Recurring weekly availability in 30-minute slots</caption>
-            <thead className="bg-slate-50">
-              <tr className="border-b border-slate-200">
-                <th
-                  scope="col"
-                  className="w-36 px-4 py-3 text-left text-xs font-semibold text-slate-500"
+        {saved && !dirty && (
+          <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
+            Availability saved.
+          </p>
+        )}
+        {(error || state.error) && (
+          <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+            {state.error ?? 'Could not save availability. Check your entries and try again.'}
+          </p>
+        )}
+        <section
+          aria-label="Availability editor"
+          className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5"
+        >
+          <div className="flex flex-wrap gap-2" aria-label="Choose weekday">
+            {DAY_LABELS.map((label, i) => (
+              <Button
+                key={label}
+                type="button"
+                size="sm"
+                variant={day === i ? 'primary' : 'secondary'}
+                aria-pressed={day === i}
+                onClick={() => {
+                  setDay(i)
+                  setDays([])
+                  setRangeError('')
+                }}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          <h2 className="font-semibold">{DAY_LABELS[day]} availability</h2>
+          <ul className="space-y-2">
+            {windows
+              .filter((w) => w.dayOfWeek === day)
+              .map((w) => (
+                <li
+                  key={w.startMinute}
+                  className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 p-3"
                 >
-                  Time
-                </th>
-                {DAY_LABELS.map((day) => (
-                  <th
-                    scope="col"
-                    key={day}
-                    className="px-2 py-3 text-center text-xs font-semibold text-slate-700"
+                  <span>{formatSlotRange(w.startMinute, w.endMinute - w.startMinute)}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={pending}
+                    aria-label={
+                      'Remove ' +
+                      DAY_LABELS[day] +
+                      ' ' +
+                      formatSlotRange(w.startMinute, w.endMinute - w.startMinute)
+                    }
+                    onClick={() =>
+                      update(
+                        new Set(
+                          [...slots].filter((s) => {
+                            const [d, m] = s.split('-').map(Number)
+                            return d !== day || m < w.startMinute || m >= w.endMinute
+                          })
+                        ),
+                        'Time range removed. You can undo before saving.'
+                      )
+                    }
                   >
-                    {day.slice(0, 3)}
-                  </th>
+                    Remove
+                  </Button>
+                </li>
+              ))}
+          </ul>
+          {!windows.some((w) => w.dayOfWeek === day) && (
+            <p className="text-sm text-slate-500">No availability on {DAY_LABELS[day]}.</p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <label className="field">
+              From
+              <select
+                aria-label="From"
+                className="input"
+                value={start}
+                onChange={(e) => setStart(Number(e.target.value))}
+              >
+                {SLOT_STARTS.map((m) => (
+                  <option key={m} value={m}>
+                    {clock(m)}
+                  </option>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {SLOT_STARTS.map((startMin) => (
-                <tr key={startMin} className="border-b border-slate-100 last:border-b-0">
-                  <th
-                    scope="row"
-                    className="bg-slate-50/60 px-4 py-2 text-left text-xs font-medium whitespace-nowrap text-slate-600 tabular-nums"
-                  >
-                    {formatSlotRange(startMin)}
-                  </th>
-                  {DAY_LABELS.map((day, dayOfWeek) => {
-                    const key = `${dayOfWeek}-${startMin}`
-                    return (
-                      <td key={key} className="p-1 text-center">
-                        <label className="group flex min-h-10 cursor-pointer items-center justify-center rounded-md hover:bg-slate-50">
+              </select>
+            </label>
+            <label className="field">
+              Until
+              <select
+                aria-label="Until"
+                className="input"
+                value={end}
+                onChange={(e) => setEnd(Number(e.target.value))}
+              >
+                {[...SLOT_STARTS.slice(1), DAY_END_MIN].map((m) => (
+                  <option key={m} value={m}>
+                    {clock(m)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={pending}
+            onClick={() => {
+              try {
+                update(
+                  addAvailabilityRange(slots, day, start, end),
+                  'Time range added. Save when ready.'
+                )
+              } catch (err) {
+                setRangeError(err instanceof Error ? err.message : 'Invalid range.')
+              }
+            }}
+          >
+            Add time range
+          </Button>
+          {rangeError && (
+            <p role="alert" className="text-sm text-red-800">
+              {rangeError}
+            </p>
+          )}
+          <fieldset className="space-y-3 border-t border-slate-100 pt-4">
+            <legend className="text-sm font-semibold">Copy {DAY_LABELS[day]} to other days</legend>
+            <p className="text-xs text-slate-600">
+              Adds these times to the selected days. Existing times are kept and overlaps are
+              merged.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              {DAY_LABELS.map(
+                (label, i) =>
+                  i !== day && (
+                    <label key={label} className="flex min-h-10 items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="size-5"
+                        checked={days.includes(i)}
+                        onChange={(e) =>
+                          setDays(e.target.checked ? [...days, i] : days.filter((d) => d !== i))
+                        }
+                      />
+                      {label}
+                    </label>
+                  )
+              )}
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              disabled={pending || !days.length || !windows.some((w) => w.dayOfWeek === day)}
+              onClick={() =>
+                update(
+                  copyAvailabilityDays(slots, day, days),
+                  'Availability copied. Review the days before saving.'
+                )
+              }
+            >
+              Copy to selected days
+            </Button>
+          </fieldset>
+          <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                update(
+                  new Set([...slots].filter((s) => !s.startsWith(day + '-'))),
+                  'Day cleared. You can undo before saving.'
+                )
+              }
+            >
+              Clear this day
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={pending}
+              onClick={() =>
+                update(new Set(), 'All days cleared. Save to clear your availability.')
+              }
+            >
+              Clear all
+            </Button>
+            {undo && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={pending}
+                onClick={() => {
+                  setSlots(undo)
+                  setUndo(null)
+                  setNotice('Last edit undone.')
+                }}
+              >
+                Undo last edit
+              </Button>
+            )}
+          </div>
+          {notice && (
+            <p role="status" className="text-sm text-slate-600">
+              {notice}
+            </p>
+          )}
+        </section>
+        <details className="rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold">
+            Edit individual half-hour slots
+          </summary>
+          <p className="my-3 text-xs text-slate-600">
+            Optional full-week grid. Scroll sideways on small screens.
+          </p>
+          <div className="table-scroll">
+            <table className="w-full min-w-[680px] text-sm">
+              <caption className="sr-only">
+                Recurring weekly availability in 30-minute slots
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Time</th>
+                  {DAY_LABELS.map((d) => (
+                    <th scope="col" key={d}>
+                      {d}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {SLOT_STARTS.map((m) => (
+                  <tr key={m}>
+                    <th scope="row" className="p-2 text-xs">
+                      {formatSlotRange(m)}
+                    </th>
+                    {DAY_LABELS.map((d, i) => {
+                      const key = i + '-' + m
+                      return (
+                        <td key={key} className="p-2 text-center">
                           <input
                             type="checkbox"
                             name="slots"
                             value={key}
-                            defaultChecked={checked.has(key)}
-                            aria-label={`${day} ${formatSlotRange(startMin)}`}
-                            className="size-6 rounded border-slate-300 accent-[#1e2a4a]"
+                            aria-label={d + ' ' + formatSlotRange(m)}
+                            checked={slots.has(key)}
+                            onChange={(e) => {
+                              const next = new Set(slots)
+                              if (e.target.checked) next.add(key)
+                              else next.delete(key)
+                              update(next, 'Availability updated.')
+                            }}
+                            className="size-6 accent-[#1e2a4a]"
                           />
-                        </label>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-xl text-xs leading-5 text-slate-500">
-            Only checked slots are kept. Unchecking every slot and saving clears your availability.
-          </p>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+        <div className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <span className="text-sm text-slate-600">
+            {dirty ? 'Unsaved changes' : 'No unsaved changes'} · {slots.size / 2} hours
+          </span>
           <SubmitButton>Save availability</SubmitButton>
         </div>
-      </Panel>
+      </ReadyFields>
     </form>
   )
 }

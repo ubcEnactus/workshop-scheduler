@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { BookOpen, Pencil } from 'lucide-react'
 
 import { ClassDefaults } from '@/components/class-defaults'
@@ -15,10 +16,12 @@ import { createClassSection, deleteClassSection } from './actions'
 export default async function ClassesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   await requireRole('ADMIN')
-  const { error } = await searchParams
+  const query = await searchParams
+  const { error } = query
+  const context = parseSchedulingContext(query)
   const [classes, teachers] = await Promise.all([
     prisma.classSection.findMany({
       where: { school: { deletedAt: null }, teacher: { deletedAt: null } },
@@ -144,7 +147,7 @@ export default async function ClassesPage({
                         <td>
                           <div className="flex justify-end gap-2">
                             <Link
-                              href={`/admin/classes/${cls.id}/edit`}
+                              href={schedulingHref('/admin/classes/' + cls.id + '/edit', context)}
                               aria-label={`Edit ${cls.name}`}
                               className={buttonClasses({ variant: 'ghost', size: 'sm' })}
                             >

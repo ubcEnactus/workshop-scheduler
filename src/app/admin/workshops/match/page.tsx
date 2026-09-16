@@ -1,8 +1,7 @@
 import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { monthSchema } from '@/lib/schemas/workshops'
-import { vancouverMonthKey } from '@/lib/time'
+import { normalizeSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { ClassSelection } from '@/components/class-selection'
 import { FormError } from '@/components/form-error'
 import { SubmitButton } from '@/components/submit-button'
@@ -13,17 +12,32 @@ import { Panel } from '@/components/ui/panel'
 export default async function MatchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; error?: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireRole('ADMIN')
   const query = await searchParams
-  const parsed = monthSchema.safeParse(query.month ?? vancouverMonthKey())
-  const month = parsed.success ? parsed.data : vancouverMonthKey()
   const classes = await prisma.classSection.findMany({
     where: { school: { deletedAt: null }, teacher: { deletedAt: null, role: 'TEACHER' } },
     include: { school: true },
     orderBy: { name: 'asc' },
   })
+  const schools = await prisma.school.findMany({ where: { deletedAt: null }, select: { id: true } })
+  const { context, warning } = normalizeSchedulingContext(query, classes, schools)
+  const month = context.month
+  const selected =
+    query.selection === '1'
+      ? Array.isArray(query.classId)
+        ? query.classId
+        : query.classId
+          ? [query.classId]
+          : []
+      : classes
+          .filter(
+            (c) =>
+              (!context.schoolId || c.schoolId === context.schoolId) &&
+              (!context.classSectionId || c.id === context.classSectionId)
+          )
+          .map((c) => c.id)
   return (
     <main className="page-content">
       <PageHeader
@@ -33,12 +47,12 @@ export default async function MatchPage({
       >
         <Link
           className="text-sm font-medium text-slate-500 hover:text-slate-900"
-          href={'/admin/workshops?month=' + month}
+          href={schedulingHref('/admin/workshops', context)}
         >
           ← Workshops
         </Link>
       </PageHeader>
-      <FormError message={query.error} />
+      <FormError message={typeof query.error === 'string' ? query.error : warning} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
           <p className="flex items-center gap-2 text-sm font-semibold text-blue-900">
@@ -64,6 +78,11 @@ export default async function MatchPage({
         description="Choose a calendar month and the classes to include."
       >
         <form action={previewMatching} className="space-y-5">
+          {Object.entries(context)
+            .filter(([key]) => key !== 'month')
+            .map(([key, value]) => (
+              <input key={key} type="hidden" name={key} value={value} />
+            ))}
           <label className="field max-w-xs">
             Month
             <input
@@ -77,7 +96,7 @@ export default async function MatchPage({
           </label>
           <ClassSelection
             classes={classes.map((c) => ({ id: c.id, label: c.name + ' · ' + c.school.name }))}
-            selected={classes.map((c) => c.id)}
+            selected={selected}
           />
           <SubmitButton>Preview PA assignments</SubmitButton>
         </form>

@@ -1,4 +1,9 @@
 import Link from 'next/link'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
+import { loadSchedule } from '@/lib/scheduling/store'
+import { matchesScheduleView } from '@/lib/scheduling/workspace'
+import { vancouverMonthKey } from '@/lib/time'
+import { ContextMonth } from '@/components/context-month'
 import { BookOpen, CalendarDays, School, Users } from 'lucide-react'
 
 import { buttonClasses } from '@/components/ui/button'
@@ -27,8 +32,34 @@ const SECTIONS = [
   { href: '/admin/classes', name: 'Classes', blurb: 'Maintain classes and availability.' },
 ] as const
 
-export default async function AdminHome() {
+export default async function AdminHome({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | undefined>>
+}) {
   const user = await requireRole('ADMIN')
+  const context = parseSchedulingContext(await searchParams)
+  const snapshot = await loadSchedule(prisma)
+  const monthWorkshops = snapshot.workshops.filter(
+    (w) =>
+      w.activeClass &&
+      vancouverMonthKey(w.scheduledStart) === context.month &&
+      (!context.schoolId || w.schoolId === context.schoolId) &&
+      (!context.classSectionId || w.classSectionId === context.classSectionId)
+  )
+  const missingQuotas = snapshot.pas.filter(
+    (p) => !snapshot.quotas.some((q) => q.paId === p.id && q.month === context.month)
+  )
+  const missingClasses = await prisma.classSection.findMany({
+    where: {
+      meetings: { none: {} },
+      school: { deletedAt: null },
+      teacher: { deletedAt: null, role: 'TEACHER' },
+      ...(context.schoolId ? { schoolId: context.schoolId } : {}),
+      ...(context.classSectionId ? { id: context.classSectionId } : {}),
+    },
+    select: { id: true, name: true },
+  })
   const now = new Date()
 
   const [schoolCount, teacherCount, paCount, classCount, upcomingWorkshops] = await Promise.all([
@@ -60,12 +91,58 @@ export default async function AdminHome() {
         title={`Hello ${user.name ?? user.email}`}
         description="Here’s the current shape of your workshop program and what’s coming next."
         actions={
-          <Link href="/admin/workshops" className={buttonClasses()}>
+          <Link href={schedulingHref('/admin/workshops', context)} className={buttonClasses()}>
             Manage workshops
           </Link>
         }
       />
 
+      <Panel
+        title="This month’s next steps"
+        description="Open a task to work on the selected month."
+      >
+        <ContextMonth context={context} path="/admin" label="Task month" />
+        <div className="mt-4 flex flex-wrap gap-3">
+          {(
+            [
+              { view: 'unstaffed', label: 'Drafts need staffing' },
+              { view: 'ready', label: 'Ready to publish' },
+              { view: 'review', label: 'Published need review' },
+            ] as const
+          ).map((item) => (
+            <Link
+              key={item.view}
+              href={schedulingHref('/admin/workshops', { ...context, view: item.view })}
+              className={buttonClasses({ variant: 'secondary' })}
+            >
+              {monthWorkshops.filter((w) => matchesScheduleView(w, snapshot, item.view)).length} ·{' '}
+              {item.label}
+            </Link>
+          ))}
+        </div>
+        <ul className="mt-4 space-y-2 text-sm">
+          {missingQuotas.map((pa) => (
+            <li key={pa.id}>
+              <Link
+                className="underline"
+                href={schedulingHref('/admin/staffing', context) + '#quota-' + pa.id}
+              >
+                Set {pa.name ?? pa.email}’s {context.month} quota
+              </Link>
+            </li>
+          ))}
+          {missingClasses.map((cls) => (
+            <li key={cls.id}>
+              <Link
+                className="underline"
+                href={schedulingHref('/admin/classes/' + cls.id + '/edit', context)}
+              >
+                Record availability for {cls.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Panel>
       <section
         className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
         aria-label="Program summary"
@@ -106,7 +183,7 @@ export default async function AdminHome() {
           description="The next scheduled workshops across all partner schools."
           actions={
             <Link
-              href="/admin/workshops"
+              href={schedulingHref('/admin/workshops', context)}
               className={buttonClasses({ variant: 'secondary', size: 'sm' })}
             >
               View schedule
@@ -117,7 +194,10 @@ export default async function AdminHome() {
             <div className="empty-state">
               <CalendarDays className="size-6" aria-hidden="true" />
               <p>No upcoming workshops are scheduled.</p>
-              <Link href="/admin/workshops/plan" className={buttonClasses({ size: 'sm' })}>
+              <Link
+                href={schedulingHref('/admin/workshops/plan', context)}
+                className={buttonClasses({ size: 'sm' })}
+              >
                 Plan workshops
               </Link>
             </div>
@@ -141,7 +221,7 @@ export default async function AdminHome() {
                       <tr key={workshop.id}>
                         <td>
                           <Link
-                            href={`/admin/workshops/${workshop.id}`}
+                            href={schedulingHref('/admin/workshops/' + workshop.id, context)}
                             className="font-semibold text-slate-900 hover:text-[#1e2a4a] hover:underline"
                           >
                             {workshop.classSection.name}
@@ -171,7 +251,7 @@ export default async function AdminHome() {
             {SECTIONS.map((section) => (
               <Link
                 key={section.href}
-                href={section.href}
+                href={schedulingHref(section.href, context)}
                 className="group flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0"
               >
                 <span>
