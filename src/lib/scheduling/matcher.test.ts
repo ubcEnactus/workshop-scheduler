@@ -6,6 +6,7 @@ function workshop(id: string, date = '2027-01-04', minute = 600): ScheduledWorks
   return {
     id,
     classSectionId: id,
+    schoolId: 'school',
     scheduledStart: vancouverToUtc(date, minute),
     scheduledEnd: vancouverToUtc(date, minute + 60),
     minPAs: 1,
@@ -19,7 +20,7 @@ function workshop(id: string, date = '2027-01-04', minute = 600): ScheduledWorks
 }
 function snapshot(workshops: ScheduledWorkshop[]): ScheduleSnapshot {
   return {
-    minimumGapMinutes: 60,
+    minimumGapDays: 1,
     pas: ['a', 'b'].map((id) => ({ id, name: id, email: id + '@test.local' })),
     availability: ['a', 'b'].flatMap((userId) =>
       [0, 1, 2, 3, 4].flatMap((dayOfWeek) =>
@@ -82,7 +83,7 @@ describe('pure automatic matcher', () => {
     prior.status = 'PUBLISHED'
     prior.assignments = [{ paId: 'a', status: 'PUBLISHED', source: 'MANUAL' }]
     const s = snapshot([w, prior])
-    s.minimumGapMinutes = 4 * 24 * 60
+    s.minimumGapDays = 4
     s.quotas = [
       { paId: 'a', month: '2027-02', quota: 1 },
       { paId: 'b', month: '2027-02', quota: 0 },
@@ -101,6 +102,34 @@ describe('pure automatic matcher', () => {
     w.assignments = [{ paId: 'a', status: 'DRAFT', source: 'AUTOMATIC' }]
     const s = snapshot([w])
     s.quotas.forEach((q) => (q.quota = 1))
+    expect(matchWorkshops(s, ['target'])[0].paIds).toEqual(['a'])
+  })
+  it('never staffs two same-school classes on one date with the same PA on a rerun', () => {
+    const early = workshop('early'),
+      later = workshop('later', '2027-01-04', 720)
+    const s = snapshot([early, later])
+    s.pas = s.pas.filter((pa) => pa.id === 'a')
+    const initial = matchWorkshops(s, ['early', 'later'])
+    expect(initial.flatMap((proposal) => proposal.paIds)).toEqual(['a'])
+    expect(
+      initial.find((proposal) => proposal.workshopId === 'later')?.reasons.join(' ')
+    ).toContain('already has a workshop at this school')
+    early.assignments = [{ paId: 'a', status: 'DRAFT', source: 'AUTOMATIC' }]
+    expect(matchWorkshops(s, ['early', 'later'])).toEqual(initial)
+    expect(matchWorkshops(s, ['later', 'early'])).toEqual(initial)
+  })
+  it('respects same-school commitments outside the match scope and frees cancelled visits', () => {
+    const protectedVisit = workshop('protected'),
+      target = workshop('target', '2027-01-04', 720)
+    protectedVisit.status = 'PUBLISHED'
+    protectedVisit.assignments = [{ paId: 'a', status: 'PUBLISHED', source: 'MANUAL' }]
+    const s = snapshot([protectedVisit, target])
+    s.pas = s.pas.filter((pa) => pa.id === 'a')
+    expect(matchWorkshops(s, ['target'])[0].paIds).toEqual([])
+    expect(matchWorkshops(s, ['target'])[0].reasons.join(' ')).toContain(
+      'already has a workshop at this school'
+    )
+    protectedVisit.status = 'CANCELLED'
     expect(matchWorkshops(s, ['target'])[0].paIds).toEqual(['a'])
   })
 })

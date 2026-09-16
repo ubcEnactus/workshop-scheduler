@@ -135,7 +135,7 @@ export default async function MonthlyPlan({
                             formatSlotRange(m.startMinute, m.endMinute - m.startMinute)
                         )
                         .join('; ')
-                    : 'No hosting blocks. Add class meeting times before planning.'}
+                    : 'No hosting blocks. Add class availability before planning.'}
                 </p>
                 <Link
                   href={'/admin/classes/' + cls.id + '/edit'}

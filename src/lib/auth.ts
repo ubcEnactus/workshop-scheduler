@@ -6,6 +6,8 @@ import type { Role } from '@prisma/client'
 
 import { prisma } from '@/lib/db'
 import { emailDeliveryMode } from '@/lib/auth-email'
+import { previewAuthSessionCookie } from '@/lib/auth-cookie'
+import { PREVIEW_DEMO_SESSION_MAX_AGE_SECONDS } from '@/lib/preview-demo-auth'
 
 // Augment the NextAuth Session so `session.user.role` and `schoolId` are typed.
 declare module 'next-auth' {
@@ -23,9 +25,22 @@ declare module 'next-auth' {
   }
 }
 
+const isVercelPreview = process.env.VERCEL_ENV === 'preview'
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
-  session: { strategy: 'database' },
+  session: {
+    strategy: 'database',
+    ...(isVercelPreview
+      ? {
+          maxAge: PREVIEW_DEMO_SESSION_MAX_AGE_SECONDS,
+          // Equal to maxAge so preview sessions have a hard two-hour cutoff
+          // rather than becoming rolling sessions on their first read.
+          updateAge: PREVIEW_DEMO_SESSION_MAX_AGE_SECONDS,
+        }
+      : {}),
+  },
+  ...(isVercelPreview ? { cookies: { sessionToken: previewAuthSessionCookie } } : {}),
   pages: {
     signIn: '/login',
     verifyRequest: '/login/check-email',

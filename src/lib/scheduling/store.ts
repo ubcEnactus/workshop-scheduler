@@ -42,13 +42,14 @@ export async function loadSchedule(db: Prisma.TransactionClient): Promise<Schedu
     }),
   ])
   return {
-    minimumGapMinutes: settings.minimumGapMinutes,
+    minimumGapDays: settings.minimumGapDays,
     pas,
     availability,
     quotas,
     workshops: workshops.map((w) => ({
       id: w.id,
       classSectionId: w.classSectionId,
+      schoolId: w.classSection.schoolId,
       scheduledStart: w.scheduledStart,
       scheduledEnd: w.scheduledEnd,
       minPAs: w.minPAs,

@@ -1,5 +1,6 @@
 import { PrismaClient, Role } from '@prisma/client'
 import { shiftMonth, vancouverMonthKey, vancouverToUtc } from '../src/lib/time'
+import { getPreviewDemoConfig } from '../src/lib/preview-demo-auth'
 
 const prisma = new PrismaClient()
 
@@ -49,10 +50,36 @@ function ticks(dayOfWeek: number, startMin: number, endMin: number) {
 }
 
 async function main() {
+  const seedPreviewDemoAccounts = process.env.SEED_PREVIEW_DEMO_ACCOUNTS === 'true'
+  const previewDemo = seedPreviewDemoAccounts ? getPreviewDemoConfig() : null
+  if (seedPreviewDemoAccounts && !previewDemo) {
+    throw new Error(
+      'Refusing to seed preview demo accounts because the preview demo environment guard is incomplete or mismatched.'
+    )
+  }
+
+  if (previewDemo) {
+    const secondarySeedEmails = new Set([
+      ...PAS.slice(1).map((account) => account.email),
+      ...TEACHERS.slice(1).map((account) => account.email),
+    ])
+    for (const email of [previewDemo.adminEmail, previewDemo.teacherEmail, previewDemo.paEmail]) {
+      if (secondarySeedEmails.has(email)) {
+        throw new Error('A configured preview demo email collides with a secondary seed account.')
+      }
+    }
+  }
+
+  const admins = previewDemo ? [{ email: previewDemo.adminEmail, name: 'Demo admin' }] : ADMINS
+  const pas = previewDemo ? [{ email: previewDemo.paEmail, name: 'Demo PA' }, ...PAS.slice(1)] : PAS
+  const teachers = previewDemo
+    ? [{ email: previewDemo.teacherEmail, name: 'Demo teacher' }, ...TEACHERS.slice(1)]
+    : TEACHERS
+
   await prisma.schedulingSettings.upsert({
     where: { id: 1 },
-    create: { id: 1, minimumGapMinutes: 60 },
-    update: { minimumGapMinutes: 60 },
+    create: { id: 1, minimumGapDays: 1 },
+    update: { minimumGapDays: 1 },
   })
   console.log('Seeding core demo data…')
 
@@ -66,8 +93,8 @@ async function main() {
     )
   )
 
-  const admins = await Promise.all(
-    ADMINS.map((admin) =>
+  const seededAdmins = await Promise.all(
+    admins.map((admin) =>
       prisma.user.upsert({
         where: { email: admin.email },
         update: { name: admin.name, role: Role.ADMIN, deletedAt: null },
@@ -76,8 +103,8 @@ async function main() {
     )
   )
 
-  const pas = await Promise.all(
-    PAS.map((pa) =>
+  const seededPAs = await Promise.all(
+    pas.map((pa) =>
       prisma.user.upsert({
         where: { email: pa.email },
         update: { name: pa.name, role: Role.PA, schoolId: null, deletedAt: null },
@@ -86,8 +113,8 @@ async function main() {
     )
   )
 
-  const teachers = await Promise.all(
-    TEACHERS.map((teacher, index) =>
+  const seededTeachers = await Promise.all(
+    teachers.map((teacher, index) =>
       prisma.user.upsert({
         where: { email: teacher.email },
         update: {
@@ -105,8 +132,8 @@ async function main() {
     )
   )
 
-  for (let index = 0; index < teachers.length; index++) {
-    const teacher = teachers[index]
+  for (let index = 0; index < seededTeachers.length; index++) {
+    const teacher = seededTeachers[index]
     const definition = CLASSES[index % CLASSES.length]
     const classId = slugId('seed-class', `${teacher.email}-${definition.name}`)
     const meetingId = slugId('seed-meeting', classId)
@@ -152,13 +179,14 @@ async function main() {
     while (date.getUTCDay() !== definition.dayOfWeek + 1) date.setUTCDate(date.getUTCDate() + 1)
     const dateKey = date.toISOString().slice(0, 10)
     const workshopId = slugId('seed-workshop', classId)
+    const published = previewDemo ? index === 0 : index !== 0
     const workshopData = {
       classSectionId: classId,
       scheduledStart: vancouverToUtc(dateKey, definition.startMinute),
       scheduledEnd: vancouverToUtc(dateKey, definition.endMinute),
       minPAs: 1,
       maxPAs: 3,
-      status: index === 0 ? ('DRAFT' as const) : ('PUBLISHED' as const),
+      status: published ? ('PUBLISHED' as const) : ('DRAFT' as const),
     }
     await prisma.workshop.upsert({
       where: { id: workshopId },
@@ -166,34 +194,40 @@ async function main() {
       create: { id: workshopId, ...workshopData },
     })
     await prisma.assignment.deleteMany({ where: { workshopId } })
-    if (index !== 0)
-      await prisma.assignment.create({ data: { workshopId, paId: pas[0].id, status: 'PUBLISHED' } })
+    if (published)
+      await prisma.assignment.create({
+        data: { workshopId, paId: seededPAs[0].id, status: 'PUBLISHED' },
+      })
   }
 
   const availability = [[...ticks(1, 570, 690), ...ticks(2, 780, 900)], ticks(1, 570, 690)]
 
-  for (let index = 0; index < pas.length; index++) {
+  for (let index = 0; index < seededPAs.length; index++) {
     const month = shiftMonth(vancouverMonthKey(), 1)
     await prisma.monthlyPAQuota.upsert({
-      where: { paId_month: { paId: pas[index].id, month } },
-      create: { paId: pas[index].id, month, quota: 4 },
+      where: { paId_month: { paId: seededPAs[index].id, month } },
+      create: { paId: seededPAs[index].id, month, quota: 4 },
       update: { quota: 4 },
     })
     await prisma.$transaction([
-      prisma.availability.deleteMany({ where: { userId: pas[index].id } }),
+      prisma.availability.deleteMany({ where: { userId: seededPAs[index].id } }),
       prisma.availability.createMany({
-        data: availability[index].map((slot) => ({ userId: pas[index].id, ...slot })),
+        data: availability[index].map((slot) => ({ userId: seededPAs[index].id, ...slot })),
       }),
     ])
   }
 
   console.log('\nSeed complete. Use one of these invited accounts:\n')
   console.table([
-    ...admins.map((user) => ({ role: 'ADMIN', email: user.email, name: user.name })),
-    ...teachers.map((user) => ({ role: 'TEACHER', email: user.email, name: user.name })),
-    ...pas.map((user) => ({ role: 'PA', email: user.email, name: user.name })),
+    ...seededAdmins.map((user) => ({ role: 'ADMIN', email: user.email, name: user.name })),
+    ...seededTeachers.map((user) => ({ role: 'TEACHER', email: user.email, name: user.name })),
+    ...seededPAs.map((user) => ({ role: 'PA', email: user.email, name: user.name })),
   ])
-  console.log('\nWithout AUTH_RESEND_KEY, magic links print in the dev server terminal.\n')
+  if (previewDemo) {
+    console.log('\nGuarded preview demo accounts seeded.\n')
+  } else {
+    console.log('\nWithout AUTH_RESEND_KEY, magic links print in the dev server terminal.\n')
+  }
   console.log(
     `Example draft and published workshops: /admin/workshops?month=${shiftMonth(vancouverMonthKey(), 1)}`
   )

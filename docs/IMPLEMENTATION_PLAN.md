@@ -117,7 +117,7 @@ Local rehearsal implementation and release notes: commit `4f6a785`. Hosted stagi
 - [x] Add browser coverage for bulk creation, matching/reruns, publishing, and exceptions. Add direct Server Action authorization and concurrency tests; UI restrictions alone are insufficient.
 - [x] Check keyboard access, labels, pending/error/empty states, narrow screens, and reload/back navigation. The initial generic design is followed by the requested ENCT visual adaptation below.
 - [x] Review repository deployment configuration, migration order and remaining dependency advisories. Add production email configuration guards, an error boundary, and CI database/browser rehearsal.
-- [ ] Verify the hosted staging configuration, actual backup/restore, real invite-only email delivery and hosted server error visibility. No staging environment or real-email run was available in this task; see `PILOT_RUNBOOK.md` for the remaining steps.
+- [ ] Verify the complete hosted staging configuration, actual backup/restore, real invite-only email delivery and hosted server error visibility. The protected Vercel test preview is deployed and its demo sign-in verified; real-email and recovery checks remain separate. See `PILOT_RUNBOOK.md` and `VERCEL_PREVIEW.md`.
 
 **Done when:** the entire monthly workflow and an ad hoc replacement succeed in staging with real email delivery, and the team can explain and recover failed operations. Deployment is a separate release action after this rehearsal.
 
@@ -147,9 +147,38 @@ The branch contains backend work too, but it is not a ready replacement: `quota.
 - [x] Pass 46 unit, 62 integration, and 16 browser tests; inspect 51 desktop/mobile screen states with zero axe violations and zero document overflow. Pass lint, typecheck, formatting, production build, clean-install lockfile validation, and diff checks.
 - [x] Record implementation choices, review iterations, final signoffs, and remaining hosted-staging limits in `UI_REVIEW.md`.
 
+## Requested Vercel test preview — 10 September 2026
+
+- [x] Create the dedicated `workshop-scheduler-test` Vercel project and free Neon database, with Preview-only environment variables and Vercel Authentication enabled.
+- [x] Add the approved admin, teacher, and PA demo sign-in choices behind exact preview/project/configuration gates. Use active role-checked accounts, same-origin requests, secure database sessions, and a two-hour expiry; preserve normal production email authentication.
+- [x] Add opt-in disposable preview seeding with a shared published teacher/PA workshop and an admin draft. Keep the default local seed unchanged.
+- [x] Use three GPT-5.6 agents for implementation and independent review; fix the session lifetime extension and canonical-email configuration findings.
+- [x] Pass 68 unit tests, lint, typecheck, formatting, production build, and diff checks locally.
+- [x] Pass all 69 integration and 16 existing browser tests in Linux, including desktop/mobile accessibility and overflow audits. Restrict Tailwind scanning to `src` so exported QA workspaces do not watch their own logs.
+- [x] Pass the dedicated preview-login browser test using an HTTPS browser origin, verifying real database sessions, secure cookies, role identity, and the hard two-hour expiry. All 154 automated tests pass: 68 unit, 69 integration, and 17 browser tests.
+- [x] Apply all eight migrations to the dedicated Neon database and run the guarded preview seed twice successfully. Publish the final protected Preview using only the normal build command, with initialization helpers excluded.
+- [x] Verify all three roles on the final hosted URL: real HTTPS button-to-dashboard navigation, exact account roles, published/draft privacy, both cross-role denials, sign-out, secure two-hour sessions, zero captured server errors, and zero accessibility violations. Inspect the desktop/mobile login and three role dashboard captures.
+- [x] Obtain explicit final signoff from all three GPT-5.6 reviewers after source, test, and hosted screenshot review. Record the URL, validation, and remaining pilot limits in `VERCEL_PREVIEW.md`.
+
+Final preview: [Open the protected demo](https://workshop-scheduler-test-22wsj71ua-bryanj1angs-projects.vercel.app/login). Deployment `dpl_Ad5C9Crwiyi4Dj3hpKQeJ5Zw5Lbp` is Ready. Source is saved on `feature/dated-workshops`, based on `1c18674`; preview changes remain uncommitted because this session cannot write Git metadata.
+
+## Day spacing and usability follow-up — 16 September 2026
+
+- [x] Replace minute spacing with 1–365 whole Vancouver calendar days across all PA assignments. One day permits adjacent dates. Explicitly reject another assignment for the same PA at the same school on the same date, including different classes.
+- [x] Add an additive migration that rounds legacy minutes up to days, retains unconfigured NULL values and existing assignments, and invalidates stale previews. Keep the old column ignored for compatibility with the previous preview during deployment.
+- [x] Apply the shared eligibility rule to manual assignment, matching, publication, replacement and rescheduling. Retain existing conflicting commitments and surface review warnings.
+- [x] Rename the class editor's meeting-time action to “Add availability” and align its heading, directory labels and validation wording.
+- [x] Preserve the selected quota month after saving the global gap, eliminating repeated month entry and an extra “Show quotas” submission.
+- [x] Pass 101 unit, 79 integration and 18 browser tests. Cover exact day thresholds, date symmetry, DST, month/year/leap boundaries, UTC versus Vancouver dates, different classes at one school, lifecycle exclusions, concurrency, stale previews and legacy migration conversion. Pass lint, typecheck, formatting, diff checks and local/hosted production builds. Exclude generated test workspace copies from TypeScript compilation.
+- [x] Migrate the existing Neon test database without reseeding. Deploy and verify all three demo roles, access isolation, secure two-hour sessions, day settings, selected-month persistence and availability wording on the protected preview. Hosted checks captured no application 5xx responses or axe violations.
+- [x] Inspect eight live workflow states and record prioritized, testable usability improvements in `UX_IMPROVEMENTS.md`. The broad redesign remains proposed; the day-gap, copy and month-preservation fixes above are implemented.
+- [ ] Implement the larger usability recommendations, starting with navigation context, a compact monthly workspace, availability ranges and bulk quota editing.
+
+Current preview: [Open the protected demo](https://workshop-scheduler-test-4yq8n9tuo-bryanj1angs-projects.vercel.app/login), deployment `dpl_6sA9gGQPdmtiMuYuKFCh1zBGyx3a` (Ready). The three GPT-5.6 agents reached their usage limit during this follow-up; current validation was completed locally and does not imply renewed independent signoff. Automated coverage is broad, not a claim that every possible edge case or future UX flow is tested.
+
 ## Working assumptions for the first implementation
 
-- PAs provide availability for workshop time; the minimum gap applies between workshops, including at the same school. The admin must enter a positive gap before staffing.
+- PAs provide availability for workshop time; the minimum gap is 1 to 365 whole Vancouver calendar days between assignment dates across all schools. A gap of 1 permits adjacent dates. The same PA cannot visit one school twice on the same date, even for different classes. Existing assignments remain intact and conflicts are flagged.
 - Normal publishing enforces the constraints. If real operations require exceptions, add a deliberate admin override with a reason and visible warning; never let the matcher override them automatically.
 - Blocked school dates are a useful later addition from the frontend branch, but the first pilot handles holidays through explicit admin date selection. Live routing, PA check-in, calendar sync, and extra dashboards remain deferred.
 

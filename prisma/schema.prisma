@@ -247,7 +247,8 @@ model MonthlyPAQuota {
 // The singleton also serializes scheduling writes across workshops and PAs.
 model SchedulingSettings {
   id Int @id @default(1)
-  minimumGapMinutes Int?
+  minimumGapDays Int?
+  minimumGapMinutes Int? @ignore
   revision Int @default(0)
 }
 

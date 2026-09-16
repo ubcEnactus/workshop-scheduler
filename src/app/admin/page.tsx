@@ -24,7 +24,7 @@ const SECTIONS = [
   { href: '/admin/schools', name: 'Schools', blurb: 'Manage partner schools and districts.' },
   { href: '/admin/teachers', name: 'Teachers', blurb: 'Manage teacher access and schools.' },
   { href: '/admin/pas', name: 'PAs', blurb: 'Manage PA access.' },
-  { href: '/admin/classes', name: 'Classes', blurb: 'Maintain classes and meeting times.' },
+  { href: '/admin/classes', name: 'Classes', blurb: 'Maintain classes and availability.' },
 ] as const
 
 export default async function AdminHome() {

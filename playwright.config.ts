@@ -1,11 +1,14 @@
 import { defineConfig } from '@playwright/test'
 
+const isCI = process.env.CI === 'true' || process.env.CI === '1'
+
 export default defineConfig({
   testDir: './tests/e2e',
+  testIgnore: process.env.E2E_PREVIEW_DEMO === 'true' ? undefined : '**/preview-demo-auth.spec.ts',
   fullyParallel: false,
   workers: 1,
-  timeout: 90_000,
-  expect: { timeout: 15_000 },
+  timeout: isCI ? 120_000 : 90_000,
+  expect: { timeout: isCI ? 45_000 : 15_000 },
   reporter: 'list',
   outputDir: 'work/test-results',
   use: {

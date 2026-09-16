@@ -27,7 +27,7 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 async function ready(date = '2027-01-04') {
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapMinutes: 60 } })
+  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
   const replacement = await prisma.user.create({
     data: { name: 'Replacement PA', email: 'replacement@fixture.local', role: 'PA' },
   })

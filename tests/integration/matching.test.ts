@@ -21,7 +21,7 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 async function ready() {
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapMinutes: 60 } })
+  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
   await prisma.monthlyPAQuota.create({ data: { paId: f.pa.id, month: '2027-01', quota: 2 } })
   await prisma.availability.createMany({
     data: [600, 630].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 0, startMin })),

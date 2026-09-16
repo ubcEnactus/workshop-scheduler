@@ -35,7 +35,7 @@ export default async function StaffingSettings({
       <PageHeader
         eyebrow={`${month} staffing settings`}
         title="PA quotas and assignment gap"
-        description="Set fair monthly targets and the minimum travel and reset time around every assignment."
+        description="Set fair monthly targets and the minimum number of calendar days between a PA’s assignments."
       >
         <Link
           href={'/admin/workshops?month=' + month}
@@ -78,19 +78,21 @@ export default async function StaffingSettings({
       </div>
       <Panel
         title="Assignment spacing"
-        description="This constraint applies before and after every assignment, including at the same school."
+        description="Count Vancouver calendar dates: a gap of 1 day permits Tuesday after Monday. This applies across all schools. A PA cannot work at the same school twice on one day."
       >
         <form action={saveGap} className="flex flex-wrap items-end gap-4">
+          <input type="hidden" name="month" value={month} />
           <div className="field max-w-sm flex-1">
-            <label htmlFor="gap">Minimum gap between assignments (minutes)</label>
+            <label htmlFor="gap">Minimum gap between assignments (days)</label>
             <input
               id="gap"
-              name="minimumGapMinutes"
+              name="minimumGapDays"
               type="number"
               min="1"
-              max="10080"
+              max="365"
+              step="1"
               required
-              defaultValue={snapshot.minimumGapMinutes ?? ''}
+              defaultValue={snapshot.minimumGapDays ?? ''}
               className="input"
             />
           </div>

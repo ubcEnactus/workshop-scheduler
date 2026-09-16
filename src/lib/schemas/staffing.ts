@@ -7,10 +7,8 @@ const integer = z
   .pipe(z.number().int().nonnegative().max(2_147_483_647))
 export const quotaSchema = z.object({ paId: z.string().min(1), month: monthSchema, quota: integer })
 export const gapSchema = z.object({
-  minimumGapMinutes: integer.refine(
-    (n) => n > 0 && n <= 10080,
-    'Choose a gap of 1 to 10080 minutes.'
-  ),
+  month: monthSchema.optional(),
+  minimumGapDays: integer.refine((n) => n >= 1 && n <= 365, 'Choose a gap of 1 to 365 whole days.'),
 })
 export const staffSchema = workshopVersionSchema.extend({ paId: z.string().min(1) })
 export const lockSchema = workshopVersionSchema.extend({

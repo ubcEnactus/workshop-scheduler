@@ -189,7 +189,7 @@ export async function addMeeting(formData: FormData) {
     })
     if (overlap) {
       redirect(
-        `/admin/classes/${parsed.data.classSectionId}/edit?error=Meeting+times+cannot+overlap.`
+        `/admin/classes/${parsed.data.classSectionId}/edit?error=Availability+blocks+cannot+overlap.`
       )
     }
     await tx.classMeeting.create({ data: parsed.data })
@@ -201,7 +201,7 @@ export async function deleteMeeting(formData: FormData) {
   await requireRole('ADMIN')
   const parsed = classMeetingIdSchema.safeParse({ id: formData.get('id') })
   if (!parsed.success) {
-    redirect('/admin/classes?error=Unknown+meeting+time.')
+    redirect('/admin/classes?error=Unknown+availability+block.')
   }
   const meeting = await scheduleTransaction((tx) =>
     tx.classMeeting.delete({ where: { id: parsed.data.id } })

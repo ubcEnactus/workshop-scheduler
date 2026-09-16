@@ -5,6 +5,7 @@ import { vancouverDateKey, vancouverMinuteOfDay, vancouverMonthKey } from '@/lib
 export type ScheduledWorkshop = {
   id: string
   classSectionId: string
+  schoolId: string
   scheduledStart: Date
   scheduledEnd: Date
   minPAs: number
@@ -17,7 +18,7 @@ export type ScheduledWorkshop = {
   assignments: { paId: string; status: AssignmentStatus; source: AssignmentSource }[]
 }
 export type ScheduleSnapshot = {
-  minimumGapMinutes: number | null
+  minimumGapDays: number | null
   pas: { id: string; name: string | null; email: string }[]
   availability: AvailabilitySlot[]
   quotas: { paId: string; month: string; quota: number }[]
@@ -47,8 +48,13 @@ export function eligibility(
   if (workshop.hostingValid === false)
     reasons.push('Workshop no longer fits a class hosting block.')
   if (!snapshot.pas.some((pa) => pa.id === paId)) reasons.push('PA account is inactive.')
-  if (snapshot.minimumGapMinutes === null || snapshot.minimumGapMinutes <= 0)
-    reasons.push('Set a positive minimum assignment gap.')
+  if (
+    snapshot.minimumGapDays === null ||
+    !Number.isInteger(snapshot.minimumGapDays) ||
+    snapshot.minimumGapDays < 1 ||
+    snapshot.minimumGapDays > 365
+  )
+    reasons.push('Set a minimum assignment gap of 1 to 365 whole days.')
   if (workshop.status === 'CANCELLED') reasons.push('Workshop is cancelled.')
   const existing = workshop.assignments.some((a) => a.paId === paId)
   if (workshop.assignments.length + (existing ? 0 : 1) > workshop.maxPAs)
@@ -83,11 +89,14 @@ export function eligibility(
       end = workshop.scheduledEnd.getTime()
     const otherStart = other.scheduledStart.getTime(),
       otherEnd = other.scheduledEnd.getTime()
+    const otherDate = vancouverDateKey(other.scheduledStart)
+    if (workshop.schoolId === other.schoolId && date === otherDate)
+      reasons.push('PA already has a workshop at this school on this Vancouver date.')
     if (start < otherEnd && otherStart < end) reasons.push('Conflicting assignment.')
-    else if (
-      Math.max(start - otherEnd, otherStart - end) <
-      (snapshot.minimumGapMinutes ?? 0) * 60_000
-    )
+    // Compare local calendar dates, not elapsed hours: DST days can be 23 or 25 hours.
+    const calendarDays =
+      Math.abs(Date.parse(date + 'T00:00:00Z') - Date.parse(otherDate + 'T00:00:00Z')) / 86_400_000
+    if (calendarDays < (snapshot.minimumGapDays ?? 0))
       reasons.push('Insufficient gap between assignments.')
   }
   return [...new Set(reasons)]

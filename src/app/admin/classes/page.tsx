@@ -41,7 +41,7 @@ export default async function ClassesPage({
       <PageHeader
         eyebrow="Program setup"
         title="Classes"
-        description="Set each class’s teacher, monthly workshop defaults, and weekly meeting times."
+        description="Set each class’s teacher, monthly workshop defaults, and weekly availability."
       />
       <FormError message={error} />
 
@@ -116,7 +116,7 @@ export default async function ClassesPage({
                     <tr>
                       <th>Class</th>
                       <th>Teacher and school</th>
-                      <th>Meeting times</th>
+                      <th>Availability</th>
                       <th>
                         <span className="sr-only">Actions</span>
                       </th>
@@ -138,7 +138,8 @@ export default async function ClassesPage({
                           <p className="text-xs text-slate-500">{cls.school.name}</p>
                         </td>
                         <td>
-                          {cls.meetings.length} meeting time{cls.meetings.length !== 1 ? 's' : ''}
+                          {cls.meetings.length} availability block
+                          {cls.meetings.length !== 1 ? 's' : ''}
                         </td>
                         <td>
                           <div className="flex justify-end gap-2">

@@ -46,7 +46,7 @@ describe('local pilot rehearsal', () => {
     const zero = await prisma.user.create({
       data: { email: 'zero@fixture.local', name: 'Zero quota PA', role: 'PA' },
     })
-    await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapMinutes: 60 } })
+    await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
     for (const [paId, quota, days] of [
       [f.pa.id, 1, [0, 1]],
       [b.id, 2, [0]],
@@ -125,7 +125,7 @@ describe('local pilot rehearsal', () => {
   it('retains adjacent-month commitments and explains an unfillable dated slot', async () => {
     await prisma.schedulingSettings.update({
       where: { id: 1 },
-      data: { minimumGapMinutes: 4 * 24 * 60 },
+      data: { minimumGapDays: 4 },
     })
     await prisma.monthlyPAQuota.create({ data: { paId: f.pa.id, month: '2027-02', quota: 1 } })
     await prisma.availability.createMany({

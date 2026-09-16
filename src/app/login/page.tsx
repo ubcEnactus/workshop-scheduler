@@ -1,12 +1,15 @@
 import Image from 'next/image'
 import Link from 'next/link'
-import { ArrowLeft, Mail, Sparkles } from 'lucide-react'
+import { ArrowLeft, GraduationCap, Mail, ShieldCheck, Sparkles, Users } from 'lucide-react'
 import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
 
 import { buttonClasses } from '@/components/ui/button'
 import { getCurrentUser, signIn } from '@/lib/auth'
+import { getPreviewDemoConfig } from '@/lib/preview-demo-auth'
 import { loginSchema } from '@/lib/schemas/auth'
+import { previewDemoLogin } from './actions'
+import { PreviewDemoButton } from './preview-demo-button'
 
 type SearchParams = Promise<{ callbackUrl?: string; error?: string }>
 
@@ -15,6 +18,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   if (user) redirect('/')
 
   const { callbackUrl, error } = await searchParams
+  const previewDemoConfig = getPreviewDemoConfig()
 
   async function sendMagicLink(formData: FormData) {
     'use server'
@@ -97,7 +101,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           </p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#1e2a4a]">Sign in</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Enter your invited email address. We&apos;ll send you a secure, one-time sign-in link.
+            {previewDemoConfig
+              ? 'Choose a demo role to explore this private preview.'
+              : "Enter your invited email address. We'll send you a secure, one-time sign-in link."}
           </p>
 
           {error ? (
@@ -105,37 +111,101 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               role="alert"
               className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
             >
-              Sign-in failed. Check the email address and try again.
+              {error === 'PreviewDemoUnavailable'
+                ? 'Preview demo sign-in is unavailable.'
+                : 'Sign-in failed. Check the email address and try again.'}
             </div>
           ) : null}
 
-          <form action={sendMagicLink} className="mt-8 space-y-5">
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <div className="relative">
-                <Mail
-                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
-                  aria-hidden="true"
-                />
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  placeholder="you@example.com"
-                  className="input w-full pl-10"
-                />
+          {previewDemoConfig ? (
+            <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
+              <div className="flex items-start gap-3">
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-[#1e2a4a]">
+                  <ShieldCheck className="size-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <h2 className="font-bold text-[#1e2a4a]">Preview demo access</h2>
+                  <p className="mt-1 text-sm leading-5 text-slate-600">
+                    Choose a role to explore this private preview. No email is sent.
+                  </p>
+                </div>
               </div>
-            </div>
-            <button type="submit" className={`${buttonClasses({ variant: 'primary' })} w-full`}>
-              Send magic link
-            </button>
-          </form>
+
+              <div className="mt-4 grid gap-2">
+                {(
+                  [
+                    {
+                      role: 'ADMIN',
+                      label: 'Continue as admin',
+                      email: previewDemoConfig.adminEmail,
+                      icon: ShieldCheck,
+                    },
+                    {
+                      role: 'TEACHER',
+                      label: 'Continue as teacher',
+                      email: previewDemoConfig.teacherEmail,
+                      icon: GraduationCap,
+                    },
+                    {
+                      role: 'PA',
+                      label: 'Continue as PA',
+                      email: previewDemoConfig.paEmail,
+                      icon: Users,
+                    },
+                  ] as const
+                ).map(({ role, label, email, icon: Icon }) => (
+                  <form action={previewDemoLogin} key={role}>
+                    <input type="hidden" name="role" value={role} />
+                    <PreviewDemoButton ariaLabel={`${label} (${email})`}>
+                      <span className="flex min-w-0 items-center gap-3">
+                        <Icon className="size-4 shrink-0 text-amber-700" aria-hidden="true" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-slate-800">
+                            {label}
+                          </span>
+                          <span className="block truncate text-xs font-normal text-slate-600">
+                            {email}
+                          </span>
+                        </span>
+                      </span>
+                    </PreviewDemoButton>
+                  </form>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {previewDemoConfig ? null : (
+            <form action={sendMagicLink} className="mt-8 space-y-5">
+              <div className="field">
+                <label htmlFor="email">Email</label>
+                <div className="relative">
+                  <Mail
+                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
+                    aria-hidden="true"
+                  />
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    placeholder="you@example.com"
+                    className="input w-full pl-10"
+                  />
+                </div>
+              </div>
+              <button type="submit" className={`${buttonClasses({ variant: 'primary' })} w-full`}>
+                Send magic link
+              </button>
+            </form>
+          )}
 
           <div className="mt-8 border-t border-slate-200 pt-6">
             <p className="text-xs leading-5 text-slate-500">
-              New here? Ask an admin to add you. Only invited email addresses can sign in.
+              {previewDemoConfig
+                ? 'This preview uses test data. Demo sessions expire after two hours.'
+                : 'New here? Ask an admin to add you. Only invited email addresses can sign in.'}
             </p>
           </div>
         </div>

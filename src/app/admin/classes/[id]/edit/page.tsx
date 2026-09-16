@@ -55,7 +55,7 @@ export default async function EditClassPage({
       <PageHeader
         eyebrow="Classes"
         title="Edit class"
-        description={`Manage details, planning defaults, and weekly meeting times for ${cls.name} at ${cls.school.name}.`}
+        description={`Manage details, planning defaults, and weekly availability for ${cls.name} at ${cls.school.name}.`}
         actions={
           <Link href="/admin/classes" className={buttonClasses({ variant: 'secondary' })}>
             Back to classes
@@ -131,13 +131,13 @@ export default async function EditClassPage({
 
         <div className="space-y-6">
           <Panel
-            title="Meeting times"
-            description="Weekly Vancouver times that admins use when planning workshops."
+            title="Class availability"
+            description="Recurring weekly Vancouver times when this class can host a workshop."
           >
             {cls.meetings.length === 0 ? (
               <div className="empty-state">
                 <Clock3 className="size-6" aria-hidden="true" />
-                <p>No meeting times yet.</p>
+                <p>No availability added yet.</p>
               </div>
             ) : (
               <ul className="divide-y divide-slate-100">
@@ -166,7 +166,7 @@ export default async function EditClassPage({
           </Panel>
 
           <Panel
-            title="Add meeting time"
+            title="Add availability"
             description="Add each recurring weekday block when this class can host a workshop."
           >
             <form action={addMeeting} className="space-y-5">
@@ -197,7 +197,7 @@ export default async function EditClassPage({
                   <input id="meeting-end" name="endTime" type="time" required className="input" />
                 </div>
               </div>
-              <SubmitButton>Add time</SubmitButton>
+              <SubmitButton>Add availability</SubmitButton>
             </form>
           </Panel>
         </div>

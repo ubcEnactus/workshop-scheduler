@@ -28,11 +28,13 @@ Teachers are view-only. They can see published workshops for their school but ca
 
 Each PA has an admin-set quota for the selected month. Matching should distribute workshops fairly toward those quotas without automatically exceeding them.
 
-A PA must be available for the full workshop and must have a configurable minimum gap before and after another assignment. That gap applies even at the same school; these are volunteers who need time to travel, set up, and reset.
+A PA must be available for the full workshop and must have a configurable minimum gap of 1 to 365 whole Vancouver calendar days between assignment dates, across all schools. A gap of 1 day permits Tuesday after Monday; a gap of 2 days requires Wednesday or later. Count local calendar dates, not elapsed 24-hour periods, so clock changes do not alter eligibility.
+
+A PA can never work at the same school twice on one Vancouver calendar date, including workshops for different classes. Draft, published, and completed commitments count; cancelled workshops and removed/replaced assignments do not. Changes to settings retain existing assignments and flag conflicts for the admin to review.
 
 Locked or published work must survive a rerun. When the constraints cannot be met, leaving a workshop unassigned with a clear reason is better than producing a bad schedule. The admin can always make the final call.
 
-For the pilot, the minimum gap is enough travel protection. Live routing and map optimization can wait.
+For the pilot, calendar-day spacing is the workload protection rule. Live routing and map optimization can wait.
 
 ## The monthly model
 

@@ -60,7 +60,7 @@ async function setup() {
   const other = await prisma.user.create({
     data: { role: 'PA', name: 'Mateo Singh', email: 'mateo@fixture.local' },
   })
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapMinutes: 60 } })
+  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
   for (const paId of [f.pa.id, other.id]) {
     await prisma.monthlyPAQuota.createMany({
       data: ['2027-01', '2027-02'].map((month) => ({ paId, month, quota: 4 })),

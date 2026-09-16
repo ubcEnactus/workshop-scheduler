@@ -51,10 +51,15 @@ export async function saveGap(formData: FormData) {
   if (!parsed.success)
     redirect('/admin/staffing?error=' + encodeURIComponent(parsed.error.issues[0].message))
   await scheduleTransaction((tx) =>
-    tx.schedulingSettings.update({ where: { id: 1 }, data: parsed.data })
+    tx.schedulingSettings.update({
+      where: { id: 1 },
+      data: { minimumGapDays: parsed.data.minimumGapDays },
+    })
   )
   refresh()
-  redirect('/admin/staffing?saved=1')
+  redirect(
+    '/admin/staffing?' + (parsed.data.month ? 'month=' + parsed.data.month + '&' : '') + 'saved=1'
+  )
 }
 export async function assignPA(formData: FormData) {
   await requireRole('ADMIN')
