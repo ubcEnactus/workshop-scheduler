@@ -4,24 +4,24 @@ The dedicated `workshop-scheduler-test` project uses a free Neon database contai
 
 ## Current preview — verified 16 September 2026
 
-[Open the protected demo](https://workshop-scheduler-test-kfbixhbdn-bryanj1angs-projects.vercel.app/login). Sign in to Vercel if prompted, then choose a demo role. The sample workshops are in October 2026.
+[Open the protected demo](https://workshop-scheduler-test-rgb1impml-bryanj1angs-projects.vercel.app/login). Sign in to Vercel if prompted, then choose a demo role. The sample workshops are in October 2026.
 
-Final deployment: `dpl_4c4jcQ8Kp7s1YoMZjUef3WGyDvQa` (Ready, Preview). It uses the normal `npm run build` command; initialization and QA helpers are excluded from its source. The dedicated database has all nine migrations. The September 16 additive day-gap migration preserved existing data. The subsequent usability deployment required no migration and did not rerun the seed.
+Final deployment: `dpl_4HU6KuvSnG3bykXnTopjNePZSihb` (Ready, Preview). It uses the normal `npm run build` command; initialization and QA helpers are excluded from its source. The dedicated database has all nine migrations. The September 16 additive day-gap migration preserved existing data. The subsequent usability deployments required no migration and did not rerun the seed.
 
 Validation passed:
 
-- 116 unit, 92 integration, and 25 browser tests, including the complete existing regression suite, seven new UX workflow cases and the separate HTTPS preview-session test. All 233 tests pass.
+- 118 unit, 92 integration, and 30 browser tests, including the complete existing regression suite, seven UX workflow cases, five further review regressions and the separate HTTPS preview-session test. All 240 tests pass.
 - Lint, TypeScript, formatting, diff checks, and the Vercel production build.
 - Live HTTPS sign-in and sign-out for all three configured accounts; correct roles, secure HTTP-only SameSite Lax cookies, and sessions expiring within two hours.
 - Both other-role routes denied for every account. The teacher and PA see their shared published workshop; only the admin sees the separate draft.
 - Vercel SSO protection for anonymous visitors, zero captured application 5xx responses, zero axe violations in the hosted checks, and a contained mobile login layout.
 - The deployed gap uses days, retains the selected quota month on save, and the class editor says “Add availability.”
 - The compact monthly workspace, staffing panel/focus return, mobile bulk quota table and mobile availability editor pass hosted accessibility and overflow checks. The availability Save button remains visible in the mobile viewport. Local browser audits cover 51 desktop/mobile states without axe violations or document overflow.
-- The September 10 baseline had independent approval from all three GPT-5.6 reviewers. They reached their usage limit during the September 16 follow-up, so the new work was completed and reviewed locally without claiming renewed agent signoff.
+- Three fresh GPT-5.6-sol reviewers completed independent usability, regression and scheduling-safety reviews after the usage reset. They implemented and cross-reviewed the follow-up corrections, and all three gave explicit scoped signoff with no outstanding findings. The primary agent ran the combined automated and hosted checks.
 
-The Codex task retains twelve current hosted screenshots and `outputs/vercel-preview-ux/verification.json`, plus the earlier workflow-review captures in `outputs/ux-review-sep16/`. See `UX_IMPLEMENTATION_REVIEW.md` for the implemented usability changes and review record. Tailwind source detection is scoped to `src` and TypeScript excludes generated `work/` copies. The isolated preview test uses an HTTPS browser origin and reloads the role page after the action redirect; the separate hosted check verifies the full click-to-dashboard transition over real HTTPS.
+The Codex task retains twelve current hosted screenshots and `outputs/vercel-preview-ux-reviewed/verification.json`, plus the earlier workflow-review captures in `outputs/ux-review-sep16/`. See `UX_IMPLEMENTATION_REVIEW.md` for the implemented usability changes and review record. Tailwind source detection is scoped to `src` and TypeScript excludes generated `work/` copies. The isolated preview test uses an HTTPS browser origin and reloads the role page after the action redirect; the separate hosted check verifies the full click-to-dashboard transition over real HTTPS.
 
-The deployment includes source changes from `feature/dated-workshops` on top of `4c93efd`. Release documentation was finalized after hosted verification.
+The deployment includes the reviewed follow-up source from `feature/dated-workshops` on top of `d884ac4`. All 113 source files match the reviewed export. Release documentation was finalized after hosted verification.
 
 ## Demo sign-in
 

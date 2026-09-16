@@ -1,14 +1,27 @@
 import type { ScheduleSnapshot, ScheduledWorkshop } from '@/lib/scheduling/eligibility'
 import { stageWorkshopChange } from '@/app/admin/workshops/changes/actions'
 import { vancouverDateKey, vancouverMinuteOfDay } from '@/lib/time'
+import type { SchedulingContext } from '@/lib/scheduling/navigation'
 import { SubmitButton } from './submit-button'
 import { Ban, CalendarClock, CheckCircle2, RefreshCw } from 'lucide-react'
-function Fields({ workshop, kind }: { workshop: ScheduledWorkshop; kind: string }) {
+function Fields({
+  workshop,
+  kind,
+  context,
+}: {
+  workshop: ScheduledWorkshop
+  kind: string
+  context?: SchedulingContext
+}) {
   return (
     <>
       <input type="hidden" name="id" value={workshop.id} />
       <input type="hidden" name="version" value={workshop.version} />
       <input type="hidden" name="kind" value={kind} />
+      {context &&
+        Object.entries(context).map(([key, value]) => (
+          <input key={key} type="hidden" name={key} value={value} />
+        ))}
       <label className="block text-sm font-medium text-slate-700" htmlFor={kind + '-reason'}>
         Reason
       </label>
@@ -29,9 +42,11 @@ function clock(d: Date) {
 export function WorkshopChanges({
   workshop,
   snapshot,
+  context,
 }: {
   workshop: ScheduledWorkshop
   snapshot: ScheduleSnapshot
+  context?: SchedulingContext
 }) {
   if (!['DRAFT', 'PUBLISHED'].includes(workshop.status)) return null
   const optionClass =
@@ -88,7 +103,7 @@ export function WorkshopChanges({
                   ))}
               </select>
             </label>
-            <Fields workshop={workshop} kind="REPLACE" />
+            <Fields workshop={workshop} kind="REPLACE" context={context} />
             <SubmitButton>Review replacement</SubmitButton>
           </form>
         </details>
@@ -136,7 +151,7 @@ export function WorkshopChanges({
               />
             </label>
           </div>
-          <Fields workshop={workshop} kind="RESCHEDULE" />
+          <Fields workshop={workshop} kind="RESCHEDULE" context={context} />
           <SubmitButton>Review reschedule</SubmitButton>
         </form>
       </details>
@@ -148,7 +163,7 @@ export function WorkshopChanges({
           action={stageWorkshopChange}
           className="mt-4 space-y-3 border-t border-slate-100 pt-4"
         >
-          <Fields workshop={workshop} kind="CANCEL" />
+          <Fields workshop={workshop} kind="CANCEL" context={context} />
           <SubmitButton>Review cancellation</SubmitButton>
         </form>
       </details>
@@ -161,7 +176,7 @@ export function WorkshopChanges({
             action={stageWorkshopChange}
             className="mt-4 space-y-3 border-t border-slate-100 pt-4"
           >
-            <Fields workshop={workshop} kind="COMPLETE" />
+            <Fields workshop={workshop} kind="COMPLETE" context={context} />
             <SubmitButton>Review completion</SubmitButton>
           </form>
         </details>

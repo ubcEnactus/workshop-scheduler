@@ -178,7 +178,7 @@ export default async function WorkshopDetail({
       )}
       {staffingWorkshop && (
         <Panel>
-          <WorkshopChanges workshop={staffingWorkshop} snapshot={snapshot} />
+          <WorkshopChanges workshop={staffingWorkshop} snapshot={snapshot} context={context} />
         </Panel>
       )}
       <Panel

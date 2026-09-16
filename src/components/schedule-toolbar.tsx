@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition, type MouseEvent } from 'react'
 import { monthSchema } from '@/lib/schemas/workshops'
 import { shiftMonth } from '@/lib/time'
 import { schedulingHref, type SchedulingContext } from '@/lib/scheduling/navigation'
@@ -18,8 +18,28 @@ export function ScheduleToolbar({
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  function change(next: SchedulingContext) {
+  const [draft, setDraft] = useState(context)
+  const [monthInput, setMonthInput] = useState(context.month)
+  const requested = useRef(context)
+  useEffect(() => {
+    if (!pending) {
+      requested.current = context
+      setDraft(context)
+      setMonthInput(context.month)
+    }
+  }, [context, pending])
+  function change(patch: Partial<SchedulingContext>) {
+    const next = { ...requested.current, ...patch }
+    requested.current = next
+    setDraft(next)
+    setMonthInput(next.month)
     startTransition(() => router.push(schedulingHref('/admin/workshops', next), { scroll: false }))
+  }
+  function navigate(event: MouseEvent<HTMLAnchorElement>, patch: Partial<SchedulingContext>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return
+    event.preventDefault()
+    change(patch)
   }
   return (
     <section
@@ -30,13 +50,12 @@ export function ScheduleToolbar({
         <label className="field min-w-40 flex-1">
           Month
           <input
-            key={context.month}
             type="month"
             className="input"
-            defaultValue={context.month}
+            value={monthInput}
             onChange={(e) => {
-              if (monthSchema.safeParse(e.target.value).success)
-                change({ ...context, month: e.target.value })
+              setMonthInput(e.target.value)
+              if (monthSchema.safeParse(e.target.value).success) change({ month: e.target.value })
             }}
           />
         </label>
@@ -45,10 +64,9 @@ export function ScheduleToolbar({
           <select
             aria-label="School filter"
             className="input"
-            value={context.schoolId ?? ''}
+            value={draft.schoolId ?? ''}
             onChange={(e) =>
               change({
-                ...context,
                 schoolId: e.target.value || undefined,
                 classSectionId: undefined,
               })
@@ -67,12 +85,12 @@ export function ScheduleToolbar({
           <select
             aria-label="Class filter"
             className="input"
-            value={context.classSectionId ?? ''}
-            onChange={(e) => change({ ...context, classSectionId: e.target.value || undefined })}
+            value={draft.classSectionId ?? ''}
+            onChange={(e) => change({ classSectionId: e.target.value || undefined })}
           >
             <option value="">All classes</option>
             {classes
-              .filter((c) => !context.schoolId || c.schoolId === context.schoolId)
+              .filter((c) => !draft.schoolId || c.schoolId === draft.schoolId)
               .map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -81,7 +99,10 @@ export function ScheduleToolbar({
           </select>
         </label>
         <Link
-          href={schedulingHref('/admin/workshops', { month: context.month })}
+          href={schedulingHref('/admin/workshops', { month: draft.month })}
+          onClick={(event) =>
+            navigate(event, { schoolId: undefined, classSectionId: undefined, view: undefined })
+          }
           className={buttonClasses({ variant: 'ghost' })}
         >
           Reset filters
@@ -91,9 +112,10 @@ export function ScheduleToolbar({
         <Link
           scroll={false}
           href={schedulingHref('/admin/workshops', {
-            ...context,
-            month: shiftMonth(context.month, -1),
+            ...draft,
+            month: shiftMonth(draft.month, -1),
           })}
+          onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, -1) })}
         >
           ← Previous month
         </Link>
@@ -103,9 +125,10 @@ export function ScheduleToolbar({
         <Link
           scroll={false}
           href={schedulingHref('/admin/workshops', {
-            ...context,
-            month: shiftMonth(context.month, 1),
+            ...draft,
+            month: shiftMonth(draft.month, 1),
           })}
+          onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, 1) })}
         >
           Next month →
         </Link>

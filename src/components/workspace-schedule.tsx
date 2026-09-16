@@ -37,6 +37,7 @@ export function WorkspaceSchedule({
   const [staffId, setStaffId] = useState<string | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [review, setReview] = useState(false)
+  const [publishedIds, setPublishedIds] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState<{ error?: string; success?: string }>({})
   const [notice, setNotice] = useState('')
   const dialog = useRef<HTMLDialogElement>(null)
@@ -46,9 +47,18 @@ export function WorkspaceSchedule({
     entries: { id: string; version: number }[]
     inputHash: string
   } | null>(null)
-  const staff = rows.find((r) => r.id === staffId)
-  const chosen = rows.filter((r) => selected.includes(r.id) && r.status === 'DRAFT')
-  const ready = rows.filter((r) => r.visible && r.status === 'DRAFT' && !r.problems.length)
+  const displayRows = rows.map((row) =>
+    publishedIds.has(row.id) && row.status === 'DRAFT'
+      ? {
+          ...row,
+          status: 'PUBLISHED' as const,
+          visible: !context.view || context.view === 'all' || context.view === 'published',
+        }
+      : row
+  )
+  const staff = displayRows.find((r) => r.id === staffId)
+  const chosen = displayRows.filter((r) => selected.includes(r.id) && r.status === 'DRAFT')
+  const ready = displayRows.filter((r) => r.visible && r.status === 'DRAFT' && !r.problems.length)
   function restoreFocus() {
     const target = trigger.current
     if (target?.isConnected && !target.matches(':disabled')) target.focus()
@@ -58,6 +68,14 @@ export function WorkspaceSchedule({
     if (staffId || review) dialog.current?.showModal()
     else dialog.current?.close()
   }, [staffId, review])
+  useEffect(() => {
+    setPublishedIds((current) => {
+      const pending = new Set(
+        [...current].filter((id) => rows.some((row) => row.id === id && row.status === 'DRAFT'))
+      )
+      return pending.size === current.size ? current : pending
+    })
+  }, [rows])
   function close() {
     if (pending) return
     dialog.current?.close()
@@ -98,6 +116,7 @@ export function WorkspaceSchedule({
         const result = await publishSelectedDrafts(request)
         if (result.error) setMessage(result)
         else {
+          setPublishedIds((current) => new Set([...current, ...request.entries.map((e) => e.id)]))
           setNotice(result.success ?? 'Workshops published.')
           setSelected([])
           setReview(false)
@@ -119,7 +138,7 @@ export function WorkspaceSchedule({
         <h2 ref={heading} tabIndex={-1} className="font-semibold">
           Monthly schedule{' '}
           <span className="text-sm font-normal text-slate-500">
-            · {rows.filter((r) => r.visible).length} workshops
+            · {displayRows.filter((r) => r.visible).length} workshops
           </span>
         </h2>
         <div className="flex flex-wrap gap-2">
@@ -158,7 +177,7 @@ export function WorkspaceSchedule({
           {notice}
         </p>
       )}
-      {!rows.some((r) => r.visible) ? (
+      {!displayRows.some((r) => r.visible) ? (
         <div className="empty-state">
           <p>No workshops in this month for these filters.</p>
           <Link className="underline" href={schedulingHref('/admin/workshops/plan', context)}>
@@ -185,7 +204,7 @@ export function WorkspaceSchedule({
             </tr>
           </thead>
           <tbody className="block md:table-row-group">
-            {rows
+            {displayRows
               .filter((r) => r.visible)
               .map((row) => (
                 <tr

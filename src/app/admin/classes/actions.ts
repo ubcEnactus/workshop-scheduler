@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
 import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
+import { parsePlanningReturn, preservePlanningReturn } from '@/lib/scheduling/planning-return'
 import { scheduleTransaction } from '@/lib/scheduling/store'
 import {
   classMeetingIdSchema,
@@ -21,6 +22,17 @@ function timeToMinutes(time: unknown): number {
 
 function toNumber(value: unknown): number {
   return typeof value === 'string' && value !== '' ? Number(value) : NaN
+}
+
+function classEditTarget(id: string, formData: FormData) {
+  const base = `/admin/classes/${id}/edit`
+  if (!formData.has('month') && !formData.has('planning')) return base
+  return preservePlanningReturn(schedulingHref(base, readSchedulingContext(formData)), formData)
+}
+
+function classEditError(id: string, formData: FormData, message: string) {
+  const target = classEditTarget(id, formData)
+  return `${target}${target.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`
 }
 
 async function getTeacherSchoolId(
@@ -87,9 +99,7 @@ export async function updateClassSection(formData: FormData) {
     defaultMaxPAs: formData.get('defaultMaxPAs') ?? undefined,
   })
   if (!parsed.success) {
-    redirect(
-      `/admin/classes/${id.data.id}/edit?error=${encodeURIComponent(parsed.error.issues[0].message)}`
-    )
+    redirect(classEditError(id.data.id, formData, parsed.error.issues[0].message))
   }
 
   try {
@@ -118,17 +128,19 @@ export async function updateClassSection(formData: FormData) {
       })
       return null
     })
-    if (error) redirect(`/admin/classes/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
+    if (error) redirect(classEditError(id.data.id, formData, error))
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-      redirect(`/admin/classes/${id.data.id}/edit?error=Records+changed.+Reload+and+try+again.`)
+      redirect(classEditError(id.data.id, formData, 'Records changed. Reload and try again.'))
     }
     throw error
   }
   redirect(
-    formData.has('month')
-      ? schedulingHref('/admin/classes', readSchedulingContext(formData))
-      : '/admin/classes'
+    parsePlanningReturn(formData)
+      ? classEditTarget(id.data.id, formData)
+      : formData.has('month')
+        ? schedulingHref('/admin/classes', readSchedulingContext(formData))
+        : '/admin/classes'
   )
 }
 
@@ -167,9 +179,11 @@ export async function addMeeting(formData: FormData) {
   if (!parsed.success) {
     const target =
       typeof classSectionId === 'string'
-        ? `/admin/classes/${classSectionId}/edit`
+        ? classEditTarget(classSectionId, formData)
         : '/admin/classes'
-    redirect(`${target}?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
+    redirect(
+      `${target}${target.includes('?') ? '&' : '?'}error=${encodeURIComponent(parsed.error.issues[0].message)}`
+    )
   }
 
   await scheduleTransaction(async (tx) => {
@@ -194,12 +208,14 @@ export async function addMeeting(formData: FormData) {
     })
     if (overlap) {
       redirect(
-        `/admin/classes/${parsed.data.classSectionId}/edit?error=Availability+blocks+cannot+overlap.`
+        classEditError(parsed.data.classSectionId, formData, 'Availability blocks cannot overlap.')
       )
     }
     await tx.classMeeting.create({ data: parsed.data })
   })
   revalidatePath(`/admin/classes/${parsed.data.classSectionId}/edit`)
+  if (formData.has('month') || formData.has('planning'))
+    redirect(classEditTarget(parsed.data.classSectionId, formData))
 }
 
 export async function deleteMeeting(formData: FormData) {

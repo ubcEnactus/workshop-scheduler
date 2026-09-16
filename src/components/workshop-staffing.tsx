@@ -132,7 +132,7 @@ export function WorkshopStaffing({
                         <p className="mt-1 text-xs leading-5 text-slate-500">{reasons.join(' ')}</p>
                       ) : (
                         <form action={assignPA} className="mt-2">
-                          <Identity workshop={workshop} />
+                          <Identity workshop={workshop} context={context} />
                           <input type="hidden" name="paId" value={pa.id} />
                           <SubmitButton>Assign {pa.name ?? pa.email}</SubmitButton>
                         </form>
@@ -152,7 +152,7 @@ export function WorkshopStaffing({
               action={setWorkshopLock}
               className="flex flex-wrap items-center justify-between gap-3"
             >
-              <Identity workshop={workshop} />
+              <Identity workshop={workshop} context={context} />
               <input type="hidden" name="locked" value={workshop.locked ? 'false' : 'true'} />
               <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                 <LockKeyhole className="size-4" /> Draft protection
@@ -168,7 +168,7 @@ export function WorkshopStaffing({
             action={publishWorkshop}
             className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 p-4"
           >
-            <Identity workshop={workshop} />
+            <Identity workshop={workshop} context={context} />
             <span className="flex items-center gap-2 text-sm font-semibold text-green-800">
               <ShieldCheck className="size-4" /> Ready for the official schedule?
             </span>

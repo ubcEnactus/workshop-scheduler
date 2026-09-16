@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
+import { parsePlanningReturn, planningReturnHref } from '@/lib/scheduling/planning-return'
 import { Clock3 } from 'lucide-react'
 import { notFound } from 'next/navigation'
 
@@ -28,13 +29,14 @@ export default async function EditClassPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<Record<string, string | undefined>>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireRole('ADMIN')
   const { id } = await params
   const query = await searchParams
-  const { error } = query
+  const error = typeof query.error === 'string' ? query.error : undefined
   const context = parseSchedulingContext(query)
+  const planningReturn = parsePlanningReturn(query)
   const cls = await prisma.classSection.findUnique({
     where: { id },
     include: {
@@ -69,7 +71,7 @@ export default async function EditClassPage({
         }
       />
       <FormError message={error} />
-      <Link className="text-sm underline" href={schedulingHref('/admin/workshops/plan', context)}>
+      <Link className="text-sm underline" href={planningReturnHref(context, query)}>
         Return to monthly planning
       </Link>
 
@@ -87,6 +89,15 @@ export default async function EditClassPage({
                 value={value}
               />
             ))}
+            {planningReturn && (
+              <>
+                <input type="hidden" name="planning" value="1" />
+                <input type="hidden" name="planningDraft" value={planningReturn.planningDraft} />
+                {planningReturn.planningClassIds.map((classId) => (
+                  <input key={classId} type="hidden" name="planningClassId" value={classId} />
+                ))}
+              </>
+            )}
             <input type="hidden" name="id" value={cls.id} />
             <div className="field">
               <label htmlFor="class-name">Class name</label>
@@ -203,6 +214,15 @@ export default async function EditClassPage({
                   value={value}
                 />
               ))}
+              {planningReturn && (
+                <>
+                  <input type="hidden" name="planning" value="1" />
+                  <input type="hidden" name="planningDraft" value={planningReturn.planningDraft} />
+                  {planningReturn.planningClassIds.map((classId) => (
+                    <input key={classId} type="hidden" name="planningClassId" value={classId} />
+                  ))}
+                </>
+              )}
               <input type="hidden" name="classSectionId" value={cls.id} />
               <div className="field">
                 <label htmlFor="meeting-day">Day</label>

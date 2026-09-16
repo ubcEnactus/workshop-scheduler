@@ -6,17 +6,26 @@ import { changeRequestSchema } from '@/lib/schemas/changes'
 import { previewIdSchema } from '@/lib/schemas/matching'
 import { loadSchedule, scheduleTransaction, SchedulingError } from '@/lib/scheduling/store'
 import { auditState, proposeChange } from '@/lib/scheduling/changes'
+import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 
 function fail(error: unknown, path: string): never {
   if (error instanceof SchedulingError)
-    redirect(path + '?error=' + encodeURIComponent(error.message))
+    redirect(path + (path.includes('?') ? '&' : '?') + 'error=' + encodeURIComponent(error.message))
   throw error
 }
 export async function stageWorkshopChange(formData: FormData) {
   const actor = await requireRole('ADMIN')
+  const hasContext = formData.has('month')
+  const context = readSchedulingContext(formData)
   const parsed = changeRequestSchema.safeParse(Object.fromEntries(formData))
   if (!parsed.success)
-    redirect('/admin/workshops?error=' + encodeURIComponent(parsed.error.issues[0].message))
+    redirect(
+      hasContext
+        ? schedulingHref('/admin/workshops', context, {
+            error: parsed.error.issues[0].message,
+          })
+        : '/admin/workshops?error=' + encodeURIComponent(parsed.error.issues[0].message)
+    )
   let id: string
   try {
     id = await scheduleTransaction(async (tx) => {
@@ -34,14 +43,30 @@ export async function stageWorkshopChange(formData: FormData) {
       return change.id
     })
   } catch (error) {
-    fail(error, '/admin/workshops/' + parsed.data.id)
+    fail(
+      error,
+      hasContext
+        ? schedulingHref('/admin/workshops/' + parsed.data.id, context)
+        : '/admin/workshops/' + parsed.data.id
+    )
   }
-  redirect('/admin/workshops/changes/' + id)
+  redirect(
+    hasContext
+      ? schedulingHref('/admin/workshops/changes/' + id, context)
+      : '/admin/workshops/changes/' + id
+  )
 }
 export async function applyWorkshopChange(formData: FormData) {
   const actor = await requireRole('ADMIN')
+  const hasContext = formData.has('month')
+  const context = readSchedulingContext(formData)
   const parsed = previewIdSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) redirect('/admin/workshops?error=Invalid+change.')
+  if (!parsed.success)
+    redirect(
+      hasContext
+        ? schedulingHref('/admin/workshops', context, { error: 'Invalid change.' })
+        : '/admin/workshops?error=Invalid+change.'
+    )
   let workshopId: string
   try {
     workshopId = await scheduleTransaction(async (tx) => {
@@ -101,11 +126,20 @@ export async function applyWorkshopChange(formData: FormData) {
       return current.id
     })
   } catch (error) {
-    fail(error, '/admin/workshops/changes/' + parsed.data.id)
+    fail(
+      error,
+      hasContext
+        ? schedulingHref('/admin/workshops/changes/' + parsed.data.id, context)
+        : '/admin/workshops/changes/' + parsed.data.id
+    )
   }
   revalidatePath('/admin/workshops', 'layout')
   revalidatePath('/admin/staffing')
   revalidatePath('/pa')
   revalidatePath('/teacher')
-  redirect('/admin/workshops/' + workshopId + '?changed=1')
+  redirect(
+    hasContext
+      ? schedulingHref('/admin/workshops/' + workshopId, context, { changed: '1' })
+      : '/admin/workshops/' + workshopId + '?changed=1'
+  )
 }

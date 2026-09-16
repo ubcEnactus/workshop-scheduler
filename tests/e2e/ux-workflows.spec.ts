@@ -59,6 +59,13 @@ test('month and filters survive planning, sidebar, matching, quotas, Back and re
   await expect(page.getByLabel('Class filter')).toHaveValue(f.cls.id)
   await page.getByRole('link', { name: 'Next month' }).click()
   await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-02')
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/admin/workshops' &&
+      url.searchParams.get('month') === '2027-02' &&
+      url.searchParams.get('schoolId') === f.school.id &&
+      url.searchParams.get('classSectionId') === f.cls.id
+  )
   await page.goBack()
   await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-01')
 })

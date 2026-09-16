@@ -11,12 +11,13 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 import { Panel } from '@/components/ui/panel'
 import { StatusBadge } from '@/components/ui/status-badge'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 export default async function ChangeReview({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   const actor = await requireRole('ADMIN')
   const { id } = await params,
@@ -27,6 +28,7 @@ export default async function ChangeReview({
   })
   if (!change) notFound()
   const data = changeRequestSchema.parse(change.payload)
+  const context = query.month ? parseSchedulingContext(query) : undefined
   return (
     <main className="page-content">
       <PageHeader
@@ -37,7 +39,11 @@ export default async function ChangeReview({
       >
         <Link
           className="text-sm font-medium text-slate-500 hover:text-slate-900"
-          href={'/admin/workshops/' + change.workshopId}
+          href={
+            context
+              ? schedulingHref('/admin/workshops/' + change.workshopId, context)
+              : '/admin/workshops/' + change.workshopId
+          }
         >
           ← Back to workshop
         </Link>
@@ -77,6 +83,10 @@ export default async function ChangeReview({
           className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-green-200 bg-green-50 p-5"
         >
           <input type="hidden" name="id" value={id} />
+          {context &&
+            Object.entries(context).map(([key, value]) => (
+              <input key={key} type="hidden" name={key} value={value} />
+            ))}
           <div className="flex items-start gap-3">
             <ClipboardCheck className="mt-0.5 size-5 text-green-700" />
             <div>

@@ -4,6 +4,11 @@ import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { vancouverMonthBounds } from '@/lib/time'
 import { normalizeSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
+import {
+  classEditPlanningHref,
+  parsePlanningDraft,
+  type PlanningReturn,
+} from '@/lib/scheduling/planning-return'
 import { FormError } from '@/components/form-error'
 import { ClassSelection } from '@/components/class-selection'
 import { PlanningForm } from '@/components/planning-form'
@@ -44,6 +49,13 @@ export default async function MonthlyPlan({
         ? classes.map((c) => c.id)
         : []
   const selected = classes.filter((c) => selectedIds.includes(c.id))
+  const restoredDraft = parsePlanningDraft(query.planningDraft)
+  const requestKey = restoredDraft ?? randomUUID()
+  const planningReturn: PlanningReturn = {
+    planning: '1',
+    planningDraft: requestKey,
+    planningClassIds: selected.map((c) => c.id),
+  }
   const rows = selected.flatMap((cls) =>
     cls.meetings.length
       ? Array.from(
@@ -141,7 +153,7 @@ export default async function MonthlyPlan({
                     {!cls.meetings.length && (
                       <Link
                         className="text-amber-800 underline"
-                        href={schedulingHref('/admin/classes/' + cls.id + '/edit', context)}
+                        href={classEditPlanningHref(cls.id, context, planningReturn)}
                       >
                         Add class availability before planning.
                       </Link>
@@ -153,7 +165,9 @@ export default async function MonthlyPlan({
                 <PlanningForm
                   key={context.month + selected.map((c) => c.id).join(',')}
                   context={context}
-                  requestKey={randomUUID()}
+                  requestKey={requestKey}
+                  selectedClassIds={planningReturn.planningClassIds}
+                  restoreDraft={!!restoredDraft}
                   rows={rows}
                 />
               ) : (
