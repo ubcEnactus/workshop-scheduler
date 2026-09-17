@@ -1,7 +1,8 @@
 // Workshop Scheduler — schema
 //
 // Identity (User, School) + NextAuth adapter tables, plus the scheduling
-// domain: ClassSection, ClassMeeting, Workshop, Assignment.
+// domain: ClassSection, WorkshopDefinition, ClassWorkshop, AvailabilitySlot,
+// WorkshopSession and Assignment.
 //
 // Conventions:
 // - cuid() ids
@@ -10,7 +11,7 @@
 // - Teacher is inlined as `User.schoolId?` (extract to a Teacher table later
 //   if it grows real fields; see AGENTS.md). Class-specific fields live on
 //   ClassSection, not User.
-// - Concrete instants (Workshop.scheduledStart/End) are stored UTC.
+// - Concrete session and candidate availability instants are stored UTC.
 //   Recurring weekly slots (ClassMeeting) are NOT instants: they store
 //   `dayOfWeek` + `startMinute`/`endMinute` as LOCAL wall-clock
 //   (America/Vancouver), combined with an admin-selected date to produce a UTC instant.
@@ -43,13 +44,13 @@ model User {
   schoolId String?
   school   School? @relation(fields: [schoolId], references: [id], onDelete: SetNull)
 
-  accounts        Account[]
-  sessions        Session[]
-  availabilities  Availability[]
+  accounts       Account[]
+  sessions       Session[]
+  availabilities Availability[]
 
   // Scheduling domain (back-relations)
-  classesTaught ClassSection[] @relation("TeacherClasses") // role = TEACHER
-  assignments   Assignment[]   @relation("PaAssignments") // role = PA
+  classesTaught ClassSection[]   @relation("TeacherClasses") // role = TEACHER
+  assignments   Assignment[]     @relation("SessionAssignments")
   monthlyQuotas MonthlyPAQuota[]
 
   deletedAt DateTime?
@@ -92,28 +93,29 @@ model Availability {
   @@unique([userId, dayOfWeek, startMin])
   @@index([dayOfWeek, startMin])
 }
+
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 
 // A teacher's class (one of the "1-3 classes" per school). Owns the meeting
 // times and ties teacher + school together.
 model ClassSection {
-  id      String  @id @default(cuid())
-  name    String // "Period 3 Biology"
-  subject String?
-  grade   String?
-  monthlyCadence Int @default(1)
-  defaultDurationMinutes Int @default(60)
-  defaultMinPAs Int @default(1)
-  defaultMaxPAs Int @default(3)
+  id                     String  @id @default(cuid())
+  name                   String // "Period 3 Biology"
+  subject                String?
+  grade                  String?
+  monthlyCadence         Int     @default(1)
+  defaultDurationMinutes Int     @default(60)
+  defaultMinPAs          Int     @default(1)
+  defaultMaxPAs          Int     @default(3)
 
   teacherId String
   teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
   schoolId  String
   school    School @relation(fields: [schoolId], references: [id])
 
-  meetings  ClassMeeting[]
-  workshops Workshop[]
+  meetings       ClassMeeting[]
+  classWorkshops ClassWorkshop[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -122,8 +124,8 @@ model ClassSection {
   @@index([schoolId])
 }
 
-// A weekly time the class meets. Teacher-side constraint: a workshop must land
-// in one of these slots. Local wall-clock (see header).
+// Optional weekly reference information. Candidate workshop dates belong to
+// ClassWorkshop.availabilitySlots; these recurring times do not authorize sessions.
 model ClassMeeting {
   id             String       @id @default(cuid())
   classSectionId String
@@ -143,86 +145,147 @@ enum WorkshopStatus {
   CANCELLED
 }
 
+// Reusable curriculum. A null number marks an imported, unidentified definition.
+model WorkshopDefinition {
+  id              String          @id @default(cuid())
+  number          Int?            @unique
+  title           String
+  description     String?
+  durationMinutes Int?
+  classWorkshops  ClassWorkshop[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+enum ClassWorkshopStatus {
+  NEEDS_AVAILABILITY
+  READY_TO_SCHEDULE
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model ClassWorkshop {
+  id                   String              @id @default(cuid())
+  classSectionId       String
+  classSection         ClassSection        @relation(fields: [classSectionId], references: [id])
+  workshopDefinitionId String
+  workshopDefinition   WorkshopDefinition  @relation(fields: [workshopDefinitionId], references: [id])
+  status               ClassWorkshopStatus @default(NEEDS_AVAILABILITY)
+  notes                String?
+  availabilitySlots    AvailabilitySlot[]
+  sessions             WorkshopSession[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@unique([classSectionId, workshopDefinitionId])
+  @@index([workshopDefinitionId])
+}
+
+model AvailabilitySlot {
+  id              String        @id @default(cuid())
+  classWorkshopId String
+  classWorkshop   ClassWorkshop @relation(fields: [classWorkshopId], references: [id], onDelete: Cascade)
+  start           DateTime
+  end             DateTime
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([classWorkshopId, start, end])
+}
+
+enum SessionMode {
+  IN_PERSON
+  ONLINE
+}
+
 // An admin-created dated occurrence. Matching may only change assignments.
 // The Vancouver-local start date determines the planning month.
-model Workshop {
-  id             String       @id @default(cuid())
-  classSectionId String
-  classSection   ClassSection @relation(fields: [classSectionId], references: [id])
-  batchId String?
-  batch WorkshopBatch? @relation(fields: [batchId], references: [id])
+model WorkshopSession {
+  id              String         @id @default(cuid())
+  classWorkshopId String
+  classWorkshop   ClassWorkshop  @relation(fields: [classWorkshopId], references: [id])
+  batchId         String?
+  batch           WorkshopBatch? @relation(fields: [batchId], references: [id])
 
-  scheduledStart DateTime // UTC; required before staffing
-  scheduledEnd   DateTime
-  minPAs         Int            @default(1)
-  maxPAs         Int            @default(3)
-  status         WorkshopStatus @default(DRAFT)
-  version        Int            @default(0)
-  locked         Boolean        @default(false)
-  hostingConfirmed Boolean      @default(false)
-  publishedAt    DateTime?
+  scheduledStart   DateTime // UTC; required before staffing
+  scheduledEnd     DateTime
+  minPAs           Int            @default(1)
+  maxPAs           Int            @default(3)
+  status           WorkshopStatus @default(DRAFT)
+  version          Int            @default(0)
+  locked           Boolean        @default(false)
+  hostingConfirmed Boolean        @default(false)
+  publishedAt      DateTime?
+  mode             SessionMode    @default(IN_PERSON)
+  location         String?
+  notes            String?
 
   assignments Assignment[]
-  changes WorkshopChange[]
-  events WorkshopEvent[]
+  changes     WorkshopChange[]
+  events      WorkshopEvent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([scheduledStart])
-  @@index([classSectionId])
+  @@index([classWorkshopId])
   @@index([status])
+  @@map("Workshop")
 }
 
 model WorkshopBatch {
-  id String @id @default(cuid())
-  requestKey String @unique
-  actorId String
-  month String
+  id          String            @id @default(cuid())
+  requestKey  String            @unique
+  actorId     String
+  month       String
   payloadHash String
-  createdAt DateTime @default(now())
-  workshops Workshop[]
+  createdAt   DateTime          @default(now())
+  workshops   WorkshopSession[]
 }
 
 model MatchingPreview {
-  id String @id @default(cuid())
-  actorId String
-  month String
-  classIds Json
+  id        String    @id @default(cuid())
+  actorId   String
+  month     String
+  classIds  Json
   inputHash String
-  plan Json
-  createdAt DateTime @default(now())
+  plan      Json
+  createdAt DateTime  @default(now())
   expiresAt DateTime
   appliedAt DateTime?
 }
 
 model WorkshopChange {
-  id String @id @default(cuid())
-  workshopId String
-  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  actorId String
-  payload Json
-  before Json
-  proposed Json
-  createdAt DateTime @default(now())
-  appliedAt DateTime?
-  @@index([workshopId])
+  id                String          @id @default(cuid())
+  workshopSessionId String          @map("workshopId")
+  workshopSession   WorkshopSession @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
+  actorId           String
+  payload           Json
+  before            Json
+  proposed          Json
+  createdAt         DateTime        @default(now())
+  appliedAt         DateTime?
+
+  @@index([workshopSessionId], map: "WorkshopChange_workshopId_idx")
 }
 
 model WorkshopEvent {
-  id String @id @default(cuid())
-  workshopId String
-  workshop Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  actorId String
-  actorName String
-  kind String
-  reason String
-  before Json
-  after Json
-  wasPublished Boolean
-  affectedPAIds String[]
-  createdAt DateTime @default(now())
-  @@index([workshopId, createdAt])
+  id                String          @id @default(cuid())
+  workshopSessionId String          @map("workshopId")
+  workshopSession   WorkshopSession @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
+  actorId           String
+  actorName         String
+  kind              String
+  reason            String
+  before            Json
+  after             Json
+  wasPublished      Boolean
+  affectedPAIds     String[]
+  createdAt         DateTime        @default(now())
+
+  @@index([workshopSessionId, createdAt], map: "WorkshopEvent_workshopId_createdAt_idx")
 }
 
 enum AssignmentStatus {
@@ -236,35 +299,36 @@ enum AssignmentSource {
 }
 
 model MonthlyPAQuota {
-  id String @id @default(cuid())
-  paId String
-  pa User @relation(fields: [paId], references: [id], onDelete: Cascade)
+  id    String @id @default(cuid())
+  paId  String
+  pa    User   @relation(fields: [paId], references: [id], onDelete: Cascade)
   month String
   quota Int
+
   @@unique([paId, month])
   @@index([month])
 }
 
 // The singleton also serializes scheduling writes across workshops and PAs.
 model SchedulingSettings {
-  id Int @id @default(1)
-  minimumGapDays Int? @default(7)
+  id                Int  @id @default(1)
+  minimumGapDays    Int? @default(7)
   minimumGapMinutes Int? @ignore
-  revision Int @default(0)
+  revision          Int  @default(0)
 }
 
 // A PA assigned by an admin. Drafts are private; published assignments are official.
 model Assignment {
-  id         String           @id @default(cuid())
-  workshopId String
-  workshop   Workshop         @relation(fields: [workshopId], references: [id], onDelete: Cascade)
-  paId       String
-  pa         User             @relation("PaAssignments", fields: [paId], references: [id])
-  status     AssignmentStatus @default(DRAFT)
-  source     AssignmentSource @default(MANUAL)
-  assignedAt DateTime         @default(now())
+  id                String           @id @default(cuid())
+  workshopSessionId String           @map("workshopId")
+  workshopSession   WorkshopSession  @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
+  paId              String
+  pa                User             @relation("SessionAssignments", fields: [paId], references: [id])
+  status            AssignmentStatus @default(DRAFT)
+  source            AssignmentSource @default(MANUAL)
+  assignedAt        DateTime         @default(now())
 
-  @@unique([workshopId, paId])
+  @@unique([workshopSessionId, paId], map: "Assignment_workshopId_paId_key")
   @@index([paId])
 }
 
