@@ -57,14 +57,16 @@ export async function loadSchedule(db: Prisma.TransactionClient): Promise<Schedu
       status: w.status,
       version: w.version,
       locked: w.locked,
-      hostingValid: w.classSection.meetings.some(
-        (block) =>
-          block.dayOfWeek ===
-            new Date(vancouverDateKey(w.scheduledStart) + 'T12:00:00Z').getUTCDay() - 1 &&
-          vancouverDateKey(w.scheduledStart) === vancouverDateKey(w.scheduledEnd) &&
-          block.startMinute <= vancouverMinuteOfDay(w.scheduledStart) &&
-          block.endMinute >= vancouverMinuteOfDay(w.scheduledEnd)
-      ),
+      hostingValid:
+        w.hostingConfirmed ||
+        w.classSection.meetings.some(
+          (block) =>
+            block.dayOfWeek ===
+              new Date(vancouverDateKey(w.scheduledStart) + 'T12:00:00Z').getUTCDay() - 1 &&
+            vancouverDateKey(w.scheduledStart) === vancouverDateKey(w.scheduledEnd) &&
+            block.startMinute <= vancouverMinuteOfDay(w.scheduledStart) &&
+            block.endMinute >= vancouverMinuteOfDay(w.scheduledEnd)
+        ),
       activeClass:
         w.classSection.teacher.deletedAt === null &&
         w.classSection.teacher.role === 'TEACHER' &&
@@ -77,7 +79,8 @@ export async function loadSchedule(db: Prisma.TransactionClient): Promise<Schedu
 export async function validateSlot(
   tx: Prisma.TransactionClient,
   data: WorkshopInput,
-  excludeId?: string
+  excludeId?: string,
+  options?: { hostingConfirmed: true }
 ) {
   const cls = await tx.classSection.findFirst({
     where: {
@@ -92,7 +95,18 @@ export async function validateSlot(
   const startMinute = clockMinutes(data.startTime),
     endMinute = clockMinutes(data.endTime)
   const dayOfWeek = new Date(data.date + 'T12:00:00Z').getUTCDay() - 1
+  const existingConfirmation = excludeId
+    ? await tx.workshop.findUnique({
+        where: { id: excludeId },
+        select: { hostingConfirmed: true, classSectionId: true },
+      })
+    : null
+  const hostingConfirmed =
+    options?.hostingConfirmed === true ||
+    (existingConfirmation?.hostingConfirmed === true &&
+      existingConfirmation.classSectionId === cls.id)
   if (
+    !hostingConfirmed &&
     !cls.meetings.some(
       (block) =>
         block.dayOfWeek === dayOfWeek &&
@@ -121,5 +135,6 @@ export async function validateSlot(
     scheduledEnd,
     minPAs: data.minPAs,
     maxPAs: data.maxPAs,
+    hostingConfirmed,
   }
 }

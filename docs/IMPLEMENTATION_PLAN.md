@@ -2,7 +2,7 @@
 
 Reviewed 9 September 2026 against `main` at `07e17a0` and `origin/ENCT-Frontend` at `3aa1dd5`. This is the execution checklist; `DESIGN_BRIEF.md` remains the product brief.
 
-Current status: **iterations 0–5 complete; iteration 6 local rehearsal complete, hosted staging pending; requested ENCT visual adaptation complete**. Work remains on `feature/dated-workshops`. Final UI verification on 10 September passed 46 unit tests, 62 PostgreSQL integration tests, all 16 browser tests, 51 desktop/mobile accessibility and geometry audits, lint, typecheck, formatting, and production build. All three GPT-5.6 implementation/review agents explicitly signed off. See `UI_REVIEW.md`. No merge or deployment has been performed.
+Current status: **iterations 0–5 complete; local rehearsal and protected demo verification complete; real-email and recovery pilot gates remain pending**. Work remains on `feature/dated-workshops`. The requested ENCT visual adaptation, usability follow-up and direct-booking flow are implemented. Current verification and deployment details are in `VERCEL_PREVIEW.md`; the dated sections below preserve earlier validation records. No merge or production release has been performed.
 
 Previous phase verification on 9 September: **46 unit tests, 62 PostgreSQL integration tests and all 11 browser tests passed**, along with lint, typecheck, formatting, production build and `git diff --check`. Integration/browser runs each applied all eight migrations to fresh isolated databases and seeded twice. Production email guards, a workshop error boundary and a CI database/browser job were added for the rehearsal. See `PILOT_RUNBOOK.md` for recovery steps, dependency review, and the remaining hosted email/backup/restore/log checks.
 
@@ -179,6 +179,22 @@ Final preview: [Open the protected demo](https://workshop-scheduler-test-22wsj71
 - [x] Add five browser regressions and bounded planning-return unit cases. Pass the complete 240-test suite, required checks, local/hosted builds and protected hosted role/workflow verification. Record findings and signoffs in `UX_IMPLEMENTATION_REVIEW.md`.
 
 Current preview: [Open the protected demo](https://workshop-scheduler-test-rgb1impml-bryanj1angs-projects.vercel.app/login), deployment `dpl_4HU6KuvSnG3bykXnTopjNePZSihb` (Ready). The reviewed usability follow-up passes 118 unit, 92 integration and 30 browser tests, the 51-screen accessibility/overflow audit, required code checks and local/hosted builds. All three demo roles and the workspace/mobile surfaces passed hosted verification. No database reset was performed. All three fresh reviewers signed off on their scopes with no outstanding findings; combined execution and hosted validation were performed by the primary agent. Automated coverage is broad, not a claim that every possible edge case or future UX flow is tested.
+
+## Direct booking and combined directory — 17 September 2026
+
+- [x] Remove the dashboard task menu and make **Book workshop** the primary scheduling entry point.
+- [x] Combine class and teacher management in one directory and sidebar item, with context-preserving edit/return links and **Book again** shortcuts.
+- [x] Allow booking from an empty setup: choose or add school, teacher and class inline; save all new reusable records and the draft atomically. Preserve entered values after errors, reuse normalized matches, reject email/relationship collisions and make retries idempotent.
+- [x] Record date-specific host confirmation without silently adding recurring class availability. Preserve existing monthly planning and all PA eligibility, concurrency, publication and privacy checks.
+- [x] Set the default gap to 7 days in schema, seed and settings UI; generate an additive migration through Prisma, initialize unconfigured settings and preserve existing configured values and workshops.
+- [x] Use two fresh GPT-5.6-sol agents for implementation and independent cross-review; resolve return navigation, filtered success, confirmation scope, duration defaults and accessible error-label findings. Both reviewers give scoped signoff.
+- [x] Pass 128 unit tests, 103 integration tests and all 32 normal browser cases plus the HTTPS preview-login test (264 total), lint, typecheck, formatting, diff checks and local production build. After the full browser run identified obsolete selectors and an error-label issue, the affected 11-case suite passed on rerun. Existing desktop/mobile accessibility audits and new booking-form checks pass.
+
+See `DIRECT_BOOKING_REVIEW.md` for the product behavior, review iterations and practical limits. The additive migration has been applied to the dedicated test database without resetting or reseeding it.
+
+- [x] Deploy and verify the protected preview, including all three demo roles, the combined directory, direct-booking controls, saved-class/duration prefilling, accessibility, mobile overflow and the explicitly saved 7-day assignment gap.
+
+Latest preview: [Open the protected demo](https://workshop-scheduler-test-74mb243ea-bryanj1angs-projects.vercel.app/login), deployment `dpl_HpHwExSLP1Sup227DcF6fdpJsur3` (Ready). All 118 source files match the reviewed export. Existing test data is preserved.
 
 ## Working assumptions for the first implementation
 

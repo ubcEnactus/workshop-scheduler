@@ -239,7 +239,7 @@ test('mobile navigation supports keyboard, active routes and sign out', async ({
   await expect(page).toHaveURL(/\/login$/)
 })
 
-test('empty setup explains prerequisites and disables unavailable creation', async ({ page }) => {
+test('empty directories offer direct booking without class setup', async ({ page }) => {
   const f = await resetFixtures()
   await prisma.user.updateMany({ where: { role: 'TEACHER' }, data: { deletedAt: new Date() } })
   await prisma.school.updateMany({ data: { deletedAt: new Date() } })
@@ -255,8 +255,13 @@ test('empty setup explains prerequisites and disables unavailable creation', asy
     await expect(page.getByRole('link', { name: 'Go to schools', exact: true })).toBeVisible()
     await audit(page, 'teachers-empty-' + size)
     await page.goto('/admin/classes')
-    await expect(page.getByRole('button', { name: 'Add class', exact: true })).toBeDisabled()
-    await expect(page.getByRole('link', { name: 'Go to teachers', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Book workshop', exact: true })).toBeVisible()
+    await expect(
+      page.getByText(
+        'No classes yet. Book a workshop to add its school, teacher and class together.'
+      )
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Go to teachers', exact: true })).toHaveCount(0)
     await audit(page, 'classes-empty-' + size)
   }
 })

@@ -46,6 +46,7 @@ export function WorkshopForm({
     endTime: string
     minPAs: number
     maxPAs: number
+    hostingConfirmed?: boolean
   }
 }) {
   const selected = classes.find(
@@ -119,75 +120,79 @@ export function WorkshopForm({
             ))}
           </select>
         </label>
-        {cls && (
-          <div className="space-y-3 rounded-lg bg-slate-50 p-4">
-            <p className="text-sm font-medium">
-              Class availability:{' '}
-              {cls.meetings
-                .map(
-                  (m) =>
-                    DAY_LABELS[m.dayOfWeek] +
-                    ' ' +
-                    formatSlotRange(m.startMinute, m.endMinute - m.startMinute)
-                )
-                .join('; ') || 'No availability recorded.'}
-            </p>
-            <label className="field max-w-xs">
-              Suggested duration (minutes)
-              <input
-                className="input"
-                type="number"
-                min="1"
-                max="1440"
-                value={duration}
-                onChange={(e) => {
-                  setDuration(e.target.value)
-                  setTouched(new Set([...touched, 'duration']))
-                }}
-              />
-            </label>
-            <label className="field">
-              Suggested date and time
-              <select
-                aria-label="Suggested date and time"
-                className="input"
-                value=""
-                onChange={(e) => {
-                  if (!e.target.value) return
-                  const slot = options[Number(e.target.value)]
-                  if (slot) {
-                    setValues({ ...values, ...slot })
-                    setTouched(new Set([...touched, 'date', 'startTime', 'endTime']))
-                    setNotice('Date and time selected. Review before saving.')
-                  }
-                }}
-              >
-                <option value="">Choose a suggested slot…</option>
-                {options.map((s, i) => (
-                  <option key={s.date + s.startTime} value={i}>
-                    {s.date} · {s.startTime}–{s.endTime}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!options.length && (
-              <p className="text-sm text-amber-800">
-                No suitable slots for this duration in {month}.{' '}
-                <Link
-                  className="underline"
-                  href={schedulingHref('/admin/classes/' + cls.id + '/edit', context ?? { month })}
-                >
-                  Review class availability
-                </Link>
-                .
+        {cls &&
+          !(initial?.hostingConfirmed && values.classSectionId === initial.classSectionId) && (
+            <div className="space-y-3 rounded-lg bg-slate-50 p-4">
+              <p className="text-sm font-medium">
+                Class availability:{' '}
+                {cls.meetings
+                  .map(
+                    (m) =>
+                      DAY_LABELS[m.dayOfWeek] +
+                      ' ' +
+                      formatSlotRange(m.startMinute, m.endMinute - m.startMinute)
+                  )
+                  .join('; ') || 'No availability recorded.'}
               </p>
-            )}
-            <p className="text-xs text-slate-500">
-              Suggestions use recorded availability and existing workshops. Confirm school holidays
-              separately.
-            </p>
-          </div>
-        )}
+              <label className="field max-w-xs">
+                Suggested duration (minutes)
+                <input
+                  className="input"
+                  type="number"
+                  min="1"
+                  max="1440"
+                  value={duration}
+                  onChange={(e) => {
+                    setDuration(e.target.value)
+                    setTouched(new Set([...touched, 'duration']))
+                  }}
+                />
+              </label>
+              <label className="field">
+                Suggested date and time
+                <select
+                  aria-label="Suggested date and time"
+                  className="input"
+                  value=""
+                  onChange={(e) => {
+                    if (!e.target.value) return
+                    const slot = options[Number(e.target.value)]
+                    if (slot) {
+                      setValues({ ...values, ...slot })
+                      setTouched(new Set([...touched, 'date', 'startTime', 'endTime']))
+                      setNotice('Date and time selected. Review before saving.')
+                    }
+                  }}
+                >
+                  <option value="">Choose a suggested slot…</option>
+                  {options.map((s, i) => (
+                    <option key={s.date + s.startTime} value={i}>
+                      {s.date} · {s.startTime}–{s.endTime}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {!options.length && (
+                <p className="text-sm text-amber-800">
+                  No suitable slots for this duration in {month}.{' '}
+                  <Link
+                    className="underline"
+                    href={schedulingHref(
+                      '/admin/classes/' + cls.id + '/edit',
+                      context ?? { month }
+                    )}
+                  >
+                    Review class availability
+                  </Link>
+                  .
+                </p>
+              )}
+              <p className="text-xs text-slate-500">
+                Suggestions use recorded availability and existing workshops. Confirm school
+                holidays separately.
+              </p>
+            </div>
+          )}
         {notice && (
           <p role="status" className="text-xs text-slate-600">
             {notice}
@@ -228,8 +233,9 @@ export function WorkshopForm({
           ))}
         </div>
         <p className="text-xs text-slate-500">
-          Vancouver time. The full workshop must fit within one class availability block. Saving
-          creates or updates a private draft.
+          {initial?.hostingConfirmed && values.classSectionId === initial.classSectionId
+            ? 'Vancouver time. Saving confirms this class’s date and time directly and updates the private draft.'
+            : 'Vancouver time. The full workshop must fit within one class availability block. Saving creates or updates a private draft.'}
         </p>
         {classes.length ? (
           <SubmitButton>{initial ? 'Save draft' : 'Create draft'}</SubmitButton>

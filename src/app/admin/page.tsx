@@ -1,9 +1,5 @@
 import Link from 'next/link'
 import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
-import { loadSchedule } from '@/lib/scheduling/store'
-import { matchesScheduleView } from '@/lib/scheduling/workspace'
-import { vancouverMonthKey } from '@/lib/time'
-import { ContextMonth } from '@/components/context-month'
 import { BookOpen, CalendarDays, School, Users } from 'lucide-react'
 
 import { buttonClasses } from '@/components/ui/button'
@@ -27,9 +23,12 @@ const SECTIONS = [
     blurb: 'Create, staff, and publish dated workshops.',
   },
   { href: '/admin/schools', name: 'Schools', blurb: 'Manage partner schools and districts.' },
-  { href: '/admin/teachers', name: 'Teachers', blurb: 'Manage teacher access and schools.' },
   { href: '/admin/pas', name: 'PAs', blurb: 'Manage PA access.' },
-  { href: '/admin/classes', name: 'Classes', blurb: 'Maintain classes and availability.' },
+  {
+    href: '/admin/classes',
+    name: 'Classes & teachers',
+    blurb: 'Reuse class details and manage teacher contacts.',
+  },
 ] as const
 
 export default async function AdminHome({
@@ -39,27 +38,6 @@ export default async function AdminHome({
 }) {
   const user = await requireRole('ADMIN')
   const context = parseSchedulingContext(await searchParams)
-  const snapshot = await loadSchedule(prisma)
-  const monthWorkshops = snapshot.workshops.filter(
-    (w) =>
-      w.activeClass &&
-      vancouverMonthKey(w.scheduledStart) === context.month &&
-      (!context.schoolId || w.schoolId === context.schoolId) &&
-      (!context.classSectionId || w.classSectionId === context.classSectionId)
-  )
-  const missingQuotas = snapshot.pas.filter(
-    (p) => !snapshot.quotas.some((q) => q.paId === p.id && q.month === context.month)
-  )
-  const missingClasses = await prisma.classSection.findMany({
-    where: {
-      meetings: { none: {} },
-      school: { deletedAt: null },
-      teacher: { deletedAt: null, role: 'TEACHER' },
-      ...(context.schoolId ? { schoolId: context.schoolId } : {}),
-      ...(context.classSectionId ? { id: context.classSectionId } : {}),
-    },
-    select: { id: true, name: true },
-  })
   const now = new Date()
 
   const [schoolCount, teacherCount, paCount, classCount, upcomingWorkshops] = await Promise.all([
@@ -89,60 +67,14 @@ export default async function AdminHome({
       <PageHeader
         eyebrow="Admin dashboard"
         title={`Hello ${user.name ?? user.email}`}
-        description="Here’s the current shape of your workshop program and what’s coming next."
+        description="Book a workshop in one step. New schools, teachers and classes are saved as you go."
         actions={
-          <Link href={schedulingHref('/admin/workshops', context)} className={buttonClasses()}>
-            Manage workshops
+          <Link href={schedulingHref('/admin/workshops/new', context)} className={buttonClasses()}>
+            Book workshop
           </Link>
         }
       />
 
-      <Panel
-        title="This month’s next steps"
-        description="Open a task to work on the selected month."
-      >
-        <ContextMonth context={context} path="/admin" label="Task month" />
-        <div className="mt-4 flex flex-wrap gap-3">
-          {(
-            [
-              { view: 'unstaffed', label: 'Drafts need staffing' },
-              { view: 'ready', label: 'Ready to publish' },
-              { view: 'review', label: 'Published need review' },
-            ] as const
-          ).map((item) => (
-            <Link
-              key={item.view}
-              href={schedulingHref('/admin/workshops', { ...context, view: item.view })}
-              className={buttonClasses({ variant: 'secondary' })}
-            >
-              {monthWorkshops.filter((w) => matchesScheduleView(w, snapshot, item.view)).length} ·{' '}
-              {item.label}
-            </Link>
-          ))}
-        </div>
-        <ul className="mt-4 space-y-2 text-sm">
-          {missingQuotas.map((pa) => (
-            <li key={pa.id}>
-              <Link
-                className="underline"
-                href={schedulingHref('/admin/staffing', context) + '#quota-' + pa.id}
-              >
-                Set {pa.name ?? pa.email}’s {context.month} quota
-              </Link>
-            </li>
-          ))}
-          {missingClasses.map((cls) => (
-            <li key={cls.id}>
-              <Link
-                className="underline"
-                href={schedulingHref('/admin/classes/' + cls.id + '/edit', context)}
-              >
-                Record availability for {cls.name}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </Panel>
       <section
         className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4"
         aria-label="Program summary"
@@ -171,7 +103,7 @@ export default async function AdminHome({
         <StatCard
           label="Classes"
           value={classCount}
-          detail="Ready to plan"
+          detail="Saved for reuse"
           icon={<BookOpen className="size-5" />}
           tone="slate"
         />
@@ -195,10 +127,10 @@ export default async function AdminHome({
               <CalendarDays className="size-6" aria-hidden="true" />
               <p>No upcoming workshops are scheduled.</p>
               <Link
-                href={schedulingHref('/admin/workshops/plan', context)}
+                href={schedulingHref('/admin/workshops/new', context)}
                 className={buttonClasses({ size: 'sm' })}
               >
-                Plan workshops
+                Book your first workshop
               </Link>
             </div>
           ) : (

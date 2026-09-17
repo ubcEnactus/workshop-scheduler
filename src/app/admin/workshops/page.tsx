@@ -2,7 +2,6 @@ import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { FormError } from '@/components/form-error'
-import { WorkshopForm } from '@/components/workshop-form'
 import { ScheduleToolbar } from '@/components/schedule-toolbar'
 import { WorkspaceSchedule, type WorkspaceRow } from '@/components/workspace-schedule'
 import {
@@ -11,7 +10,6 @@ import {
   type SchedulingContext,
 } from '@/lib/scheduling/navigation'
 import { formatInstantRange, vancouverMonthBounds } from '@/lib/time'
-import { createWorkshopForm } from './actions'
 import { loadSchedule } from '@/lib/scheduling/store'
 import { eligibility, staffingProblems, workload } from '@/lib/scheduling/eligibility'
 import { scheduleHash } from '@/lib/scheduling/matching-preview'
@@ -108,8 +106,14 @@ export default async function WorkshopsPage({
         actions={
           <>
             <Link
-              href={schedulingHref('/admin/workshops/plan', context)}
+              href={schedulingHref('/admin/workshops/new', context)}
               className={buttonClasses()}
+            >
+              Book workshop
+            </Link>
+            <Link
+              href={schedulingHref('/admin/workshops/plan', context)}
+              className={buttonClasses({ variant: 'secondary' })}
             >
               Plan monthly workshops
             </Link>
@@ -154,33 +158,6 @@ export default async function WorkshopsPage({
         context={context}
         inputHash={scheduleHash(snapshot)}
       />
-      <details
-        className="rounded-xl border border-slate-200 bg-white p-4"
-        open={query.create === '1'}
-      >
-        <summary className="cursor-pointer font-semibold">Add workshop</summary>
-        <div className="mt-5 max-w-3xl">
-          <WorkshopForm
-            action={createWorkshopForm}
-            classes={classes.map((c) => ({
-              ...c,
-              busy: snapshot.workshops
-                .filter(
-                  (w) =>
-                    w.status !== 'CANCELLED' &&
-                    classes.find((other) => other.id === w.classSectionId)?.teacherId ===
-                      c.teacherId
-                )
-                .map((w) => ({
-                  start: w.scheduledStart.toISOString(),
-                  end: w.scheduledEnd.toISOString(),
-                })),
-            }))}
-            month={context.month}
-            context={context}
-          />
-        </div>
-      </details>
     </main>
   )
 }

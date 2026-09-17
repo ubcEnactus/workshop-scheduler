@@ -166,6 +166,7 @@ test('admin foundation forms persist schools, teachers, PAs, classes and hosting
   await page.getByRole('button', { name: /Save/ }).click()
   await expect(page.getByText('Browser PA Updated', { exact: true })).toBeVisible()
   await page.goto('/admin/classes')
+  await page.getByText('Add a class without booking', { exact: true }).click()
   await page.locator('input[name="name"]').fill('Browser Class')
   await page.locator('select[name="teacherId"]').selectOption(teacher.id)
   await page.getByRole('button', { name: 'Add class', exact: true }).click()
@@ -197,12 +198,12 @@ test('admin creates and reloads a draft, edits across months, and filters the mo
 }) => {
   await login(page, fixtures.admin.email, 'admin')
   await page.goto('/admin/workshops?month=2027-01')
-  await page.getByText('Add workshop', { exact: true }).click()
-  await page.getByLabel('Class', { exact: true }).selectOption(fixtures.cls.id)
+  await page.getByRole('link', { name: 'Book workshop', exact: true }).click()
+  await page.getByLabel('Use a saved class').selectOption(fixtures.cls.id)
   await page.getByLabel('Vancouver date').fill('2027-01-04')
   await page.getByLabel('Start time', { exact: true }).fill('10:00')
   await page.getByLabel('End time', { exact: true }).fill('11:00')
-  await page.getByRole('button', { name: 'Create draft' }).click()
+  await page.getByRole('button', { name: 'Book workshop' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Draft saved.' })).toHaveText(
     'Draft saved.'
   )
@@ -218,7 +219,7 @@ test('admin creates and reloads a draft, edits across months, and filters the mo
   await expect(page.getByRole('table')).toContainText('Fixture Biology')
   await page.screenshot({ path: 'work/workshops-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByText('Add workshop', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Book workshop', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   )

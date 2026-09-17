@@ -197,6 +197,39 @@ describe('calendar-day spacing across mutation paths', () => {
         prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays } })
       ).rejects.toThrow()
   })
+  it('defaults new and unconfigured settings to seven days while preserving configured values and workshops', async () => {
+    const sql = await readFile(
+      'prisma/migrations/20260917084135_direct_workshop_booking/migration.sql',
+      'utf8'
+    )
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        'CREATE TEMP TABLE "SchedulingSettings" ("id" INTEGER PRIMARY KEY, "minimumGapDays" INTEGER, "revision" INTEGER DEFAULT 0) ON COMMIT DROP'
+      )
+      await tx.$executeRawUnsafe(
+        'CREATE TEMP TABLE "Workshop" ("id" INTEGER PRIMARY KEY) ON COMMIT DROP'
+      )
+      await tx.$executeRawUnsafe('INSERT INTO "SchedulingSettings" VALUES (1,NULL,3),(2,2,4)')
+      await tx.$executeRawUnsafe('INSERT INTO "Workshop" VALUES (1)')
+      for (const statement of sql
+        .replace(/^--.*$/gm, '')
+        .split(';')
+        .filter((part) => part.trim()))
+        await tx.$executeRawUnsafe(statement)
+      await tx.$executeRawUnsafe('INSERT INTO "SchedulingSettings" ("id") VALUES (3)')
+      const rows = await tx.$queryRaw<
+        { minimumGapDays: number; revision: number }[]
+      >`SELECT "minimumGapDays", "revision" FROM "SchedulingSettings" ORDER BY "id"`
+      expect(rows).toEqual([
+        { minimumGapDays: 7, revision: 4 },
+        { minimumGapDays: 2, revision: 4 },
+        { minimumGapDays: 7, revision: 0 },
+      ])
+      expect(await tx.$queryRaw`SELECT * FROM "Workshop"`).toEqual([
+        { id: 1, hostingConfirmed: false },
+      ])
+    })
+  })
   it('backfills legacy minutes, preserves NULL and invalidates old previews without deleting data', async () => {
     const sql = await readFile(
       'prisma/migrations/20260916121045_calendar_day_assignment_gap/migration.sql',

@@ -159,6 +159,7 @@ model Workshop {
   status         WorkshopStatus @default(DRAFT)
   version        Int            @default(0)
   locked         Boolean        @default(false)
+  hostingConfirmed Boolean      @default(false)
   publishedAt    DateTime?
 
   assignments Assignment[]
@@ -247,7 +248,7 @@ model MonthlyPAQuota {
 // The singleton also serializes scheduling writes across workshops and PAs.
 model SchedulingSettings {
   id Int @id @default(1)
-  minimumGapDays Int?
+  minimumGapDays Int? @default(7)
   minimumGapMinutes Int? @ignore
   revision Int @default(0)
 }

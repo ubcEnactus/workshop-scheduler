@@ -6,9 +6,11 @@ The app should make that coordination calmer. It is an admin planning tool, not 
 
 ## The flow
 
-**Teachers share their schedules → admin records class times → admin creates dated workshop slots → PAs submit availability → admin assigns PAs → admin publishes**
+**Admin books a dated workshop → selects or adds the school, teacher and class inline → assigns available PAs → reviews and publishes**
 
-Teachers send their schedules outside the app. An admin records the meeting times for each class, then creates the actual workshops for an upcoming calendar month. A workshop is already tied to a class and a concrete date and time before any PA is assigned.
+Teachers coordinate with admins outside the app. Admins can book a workshop immediately, choosing saved school, teacher and class details or adding them in the booking form. New details are saved atomically with the private draft and become reusable. There is no required sequence of setup screens. Teacher contacts and classes share one management screen.
+
+A direct booking records the admin's confirmation of that occurrence's date and time; it does not imply recurring weekly availability. Weekly class availability remains optional for direct bookings and is used for monthly planning and date suggestions. A workshop is tied to a class and a concrete date and time before any PA is assigned.
 
 Each class can have its own monthly cadence, normally one or two workshops. The admin should be able to create slots for every class or a selected group, edit the result, and add an ad hoc workshop when needed.
 
@@ -28,7 +30,7 @@ Teachers are view-only. They can see published workshops for their school but ca
 
 Each PA has an admin-set quota for the selected month. Matching should distribute workshops fairly toward those quotas without automatically exceeding them.
 
-A PA must be available for the full workshop and must have a configurable minimum gap of 1 to 365 whole Vancouver calendar days between assignment dates, across all schools. A gap of 1 day permits Tuesday after Monday; a gap of 2 days requires Wednesday or later. Count local calendar dates, not elapsed 24-hour periods, so clock changes do not alter eligibility.
+A PA must be available for the full workshop and must have a configurable minimum gap of 1 to 365 whole Vancouver calendar days between assignment dates, across all schools. The default is **7 days**. A gap of 1 day permits Tuesday after Monday; a gap of 2 days requires Wednesday or later. Count local calendar dates, not elapsed 24-hour periods, so clock changes do not alter eligibility.
 
 A PA can never work at the same school twice on one Vancouver calendar date, including workshops for different classes. Draft, published, and completed commitments count; cancelled workshops and removed/replaced assignments do not. Changes to settings retain existing assignments and flag conflicts for the admin to review.
 
@@ -42,7 +44,7 @@ The calendar is the planning model. There is no separate cycle or term to open a
 
 The core records should stay simple:
 
-- A class connects a teacher, school, recurring meeting times, and monthly cadence.
+- A class connects a teacher, school, optional recurring meeting times, and monthly cadence.
 - A workshop is one dated occurrence with staffing needs and a lifecycle such as draft, published, completed, or cancelled.
 - An assignment connects a PA to that workshop and records whether the assignment is still a draft or has been published.
 - A monthly PA quota records the admin's intended workload for that PA and month.

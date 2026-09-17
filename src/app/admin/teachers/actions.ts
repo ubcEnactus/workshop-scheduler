@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { scheduleTransaction } from '@/lib/scheduling/store'
 import { teacherSchema, teacherIdSchema } from '@/lib/schemas/teachers'
+import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 
 const DUPLICATE_EMAIL = 'That email is already in use by another account.'
 
@@ -51,6 +52,7 @@ export async function createTeacher(formData: FormData) {
     throw err
   }
   revalidatePath('/admin/teachers')
+  revalidatePath('/admin/classes')
 }
 
 export async function updateTeacher(formData: FormData) {
@@ -59,6 +61,11 @@ export async function updateTeacher(formData: FormData) {
   if (!id.success) {
     redirect('/admin/teachers?error=Unknown+teacher.')
   }
+  const target =
+    formData.get('directory') === 'combined'
+      ? schedulingHref('/admin/teachers/' + id.data.id + '/edit', readSchedulingContext(formData))
+      : '/admin/teachers/' + id.data.id + '/edit'
+  const errorTarget = target + (target.includes('?') ? '&' : '?') + 'error='
 
   const parsed = teacherSchema.safeParse({
     name: formData.get('name'),
@@ -66,12 +73,10 @@ export async function updateTeacher(formData: FormData) {
     schoolId: formData.get('schoolId'),
   })
   if (!parsed.success) {
-    redirect(
-      `/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(parsed.error.issues[0].message)}`
-    )
+    redirect(errorTarget + encodeURIComponent(parsed.error.issues[0].message))
   }
   if (!(await isActiveSchool(parsed.data.schoolId))) {
-    redirect(`/admin/teachers/${id.data.id}/edit?error=Select+an+active+school.`)
+    redirect(errorTarget + 'Select+an+active+school.')
   }
 
   try {
@@ -94,24 +99,35 @@ export async function updateTeacher(formData: FormData) {
       })
       return null
     })
-    if (error) redirect(`/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(error)}`)
+    if (error) redirect(errorTarget + encodeURIComponent(error))
   } catch (err) {
     if (isDuplicateEmail(err)) {
-      redirect(`/admin/teachers/${id.data.id}/edit?error=${encodeURIComponent(DUPLICATE_EMAIL)}`)
+      redirect(errorTarget + encodeURIComponent(DUPLICATE_EMAIL))
     }
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034') {
-      redirect(`/admin/teachers/${id.data.id}/edit?error=Records+changed.+Reload+and+try+again.`)
+      redirect(errorTarget + 'Records+changed.+Reload+and+try+again.')
     }
     throw err
   }
-  redirect('/admin/teachers')
+  revalidatePath('/admin/classes')
+  revalidatePath('/admin/teachers')
+  redirect(
+    formData.get('directory') === 'combined'
+      ? schedulingHref('/admin/classes', readSchedulingContext(formData))
+      : '/admin/teachers'
+  )
 }
 
 export async function softDeleteTeacher(formData: FormData) {
   await requireRole('ADMIN')
+  const target =
+    formData.get('directory') === 'combined'
+      ? schedulingHref('/admin/classes', readSchedulingContext(formData))
+      : '/admin/teachers'
+  const errorTarget = target + (target.includes('?') ? '&' : '?') + 'error='
   const id = teacherIdSchema.safeParse({ id: formData.get('id') })
   if (!id.success) {
-    redirect('/admin/teachers?error=Unknown+teacher.')
+    redirect(errorTarget + 'Unknown+teacher.')
   }
   await scheduleTransaction(async (tx) => {
     const assignedClass = await tx.classSection.findFirst({
@@ -119,7 +135,7 @@ export async function softDeleteTeacher(formData: FormData) {
       select: { id: true },
     })
     if (assignedClass) {
-      redirect('/admin/teachers?error=Reassign+this+teacher%27s+classes+before+removing+them.')
+      redirect(errorTarget + 'Reassign+this+teacher%27s+classes+before+removing+them.')
     }
     await tx.user.update({
       where: { id: id.data.id, role: 'TEACHER', deletedAt: null },
@@ -127,4 +143,5 @@ export async function softDeleteTeacher(formData: FormData) {
     })
   })
   revalidatePath('/admin/teachers')
+  revalidatePath('/admin/classes')
 }

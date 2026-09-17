@@ -7,7 +7,6 @@ import {
   CalendarDays,
   LayoutDashboard,
   School,
-  Users,
   BookOpen,
   UserRound,
   Settings2,
@@ -34,9 +33,13 @@ const navigation = {
     { href: '/admin/workshops/match', label: 'Assign PAs', icon: Sparkles, group: 'Scheduling' },
     { href: '/admin/staffing', label: 'Quotas & settings', icon: Settings2, group: 'Scheduling' },
     { href: '/admin/schools', label: 'Schools', icon: School, group: 'People & places' },
-    { href: '/admin/teachers', label: 'Teachers', icon: Users, group: 'People & places' },
     { href: '/admin/pas', label: 'Program assistants', icon: UserRound, group: 'People & places' },
-    { href: '/admin/classes', label: 'Classes', icon: BookOpen, group: 'People & places' },
+    {
+      href: '/admin/classes',
+      label: 'Classes & teachers',
+      icon: BookOpen,
+      group: 'People & places',
+    },
   ],
   PA: [
     { href: '/pa', label: 'My workshops', icon: CalendarDays, group: 'My workspace' },
@@ -78,7 +81,8 @@ export function RoleShell({
       .filter(
         (item) =>
           pathname === item.href ||
-          (item.href !== items[0].href && pathname.startsWith(item.href + '/'))
+          (item.href !== items[0].href && pathname.startsWith(item.href + '/')) ||
+          (item.href === '/admin/classes' && pathname.startsWith('/admin/teachers'))
       )
       .sort((a, b) => b.href.length - a.href.length)[0] ?? items[0]
   const initials = displayName

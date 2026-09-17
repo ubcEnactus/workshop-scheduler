@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeSchedulingContext, parseSchedulingContext, schedulingHref } from './navigation'
+import {
+  normalizeSchedulingContext,
+  parseSchedulingContext,
+  readSchedulingContext,
+  schedulingHref,
+} from './navigation'
 
 describe('schedule navigation context', () => {
+  it('keeps directory return filters separate from edited school and class fields', () => {
+    const form = new FormData()
+    for (const [key, value] of Object.entries({
+      month: '2027-01',
+      schoolId: 'edited-school',
+      returnSchoolId: 'filter-school',
+      classSectionId: 'edited-class',
+      returnClassSectionId: 'filter-class',
+    }))
+      form.set(key, value)
+    expect(readSchedulingContext(form)).toEqual({
+      month: '2027-01',
+      schoolId: 'filter-school',
+      classSectionId: 'filter-class',
+    })
+  })
   it('round trips a filtered month without carrying untrusted redirect values', () => {
     const context = parseSchedulingContext({
       month: '2027-01',

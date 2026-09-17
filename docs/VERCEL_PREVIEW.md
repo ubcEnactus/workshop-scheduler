@@ -2,26 +2,26 @@
 
 The dedicated `workshop-scheduler-test` project uses a free Neon database containing disposable seed data. This is a test environment, separate from a production release. Vercel Authentication remains enabled for preview deployments.
 
-## Current preview — verified 16 September 2026
+## Current preview — verified 17 September 2026
 
-[Open the protected demo](https://workshop-scheduler-test-rgb1impml-bryanj1angs-projects.vercel.app/login). Sign in to Vercel if prompted, then choose a demo role. The sample workshops are in October 2026.
+[Open the protected demo](https://workshop-scheduler-test-74mb243ea-bryanj1angs-projects.vercel.app/login). Sign in to Vercel if prompted, then choose a demo role. The sample workshops are in October 2026. Use **Book workshop** to select or add the school, teacher and class inline; **Classes & teachers** is their combined directory.
 
-Final deployment: `dpl_4HU6KuvSnG3bykXnTopjNePZSihb` (Ready, Preview). It uses the normal `npm run build` command; initialization and QA helpers are excluded from its source. The dedicated database has all nine migrations. The September 16 additive day-gap migration preserved existing data. The subsequent usability deployments required no migration and did not rerun the seed.
+Final deployment: `dpl_HpHwExSLP1Sup227DcF6fdpJsur3` (Ready, Preview). It uses the normal `npm run build` command; initialization and QA helpers are excluded from its source. The dedicated database has all ten migrations. The additive day-gap and direct-booking migrations preserved existing data. The preview's current assignment gap was explicitly saved as **7 days**. No database reset or reseed was performed.
 
 Validation passed:
 
-- 118 unit, 92 integration, and 30 browser tests, including the complete existing regression suite, seven UX workflow cases, five further review regressions and the separate HTTPS preview-session test. All 240 tests pass.
+- 128 unit, 103 integration, and 33 browser tests, including the existing regression suite, direct booking/reuse/error/mobile cases, and the separate HTTPS preview-session test. All 264 tests pass. The full normal browser run identified obsolete booking selectors and an accessible error-label issue; all 11 affected browser cases passed after correction.
 - Lint, TypeScript, formatting, diff checks, and the Vercel production build.
 - Live HTTPS sign-in and sign-out for all three configured accounts; correct roles, secure HTTP-only SameSite Lax cookies, and sessions expiring within two hours.
 - Both other-role routes denied for every account. The teacher and PA see their shared published workshop; only the admin sees the separate draft.
 - Vercel SSO protection for anonymous visitors, zero captured application 5xx responses, zero axe violations in the hosted checks, and a contained mobile login layout.
-- The deployed gap uses days, retains the selected quota month on save, and the class editor says “Add availability.”
+- The deployed gap is 7 days and retains the selected quota month on save. The old dashboard task panel is absent; the combined directory and inline booking controls work on desktop/mobile, saved-class selection is prefilled by Book again, and class duration fills the end time without replacing a deliberate edit.
 - The compact monthly workspace, staffing panel/focus return, mobile bulk quota table and mobile availability editor pass hosted accessibility and overflow checks. The availability Save button remains visible in the mobile viewport. Local browser audits cover 51 desktop/mobile states without axe violations or document overflow.
-- Three fresh GPT-5.6-sol reviewers completed independent usability, regression and scheduling-safety reviews after the usage reset. They implemented and cross-reviewed the follow-up corrections, and all three gave explicit scoped signoff with no outstanding findings. The primary agent ran the combined automated and hosted checks.
+- Two fresh GPT-5.6-sol agents implemented and cross-reviewed the direct-booking UI and backend, alongside the primary agent's directory/dashboard/default work. Both gave scoped signoff with no outstanding findings. The prior September 16 work had three independent reviewer signoffs. The primary agent ran the combined automated and hosted checks.
 
-The Codex task retains twelve current hosted screenshots and `outputs/vercel-preview-ux-reviewed/verification.json`, plus the earlier workflow-review captures in `outputs/ux-review-sep16/`. See `UX_IMPLEMENTATION_REVIEW.md` for the implemented usability changes and review record. Tailwind source detection is scoped to `src` and TypeScript excludes generated `work/` copies. The isolated preview test uses an HTTPS browser origin and reloads the role page after the action redirect; the separate hosted check verifies the full click-to-dashboard transition over real HTTPS.
+The Codex task retains sixteen current hosted screenshots and `outputs/vercel-preview-booking/verification.json`, plus earlier workflow-review captures. See `DIRECT_BOOKING_REVIEW.md` for the latest behavior and review record and `UX_IMPLEMENTATION_REVIEW.md` for the preceding changes. Hosted checks exercise the booking form and saved-record reuse without creating extra QA records; booking mutations and publication/rescheduling rollback are covered against isolated databases. Tailwind source detection is scoped to `src` and TypeScript excludes generated `work/` copies. The hosted check verifies the full click-to-dashboard transition over real HTTPS.
 
-The deployment includes the reviewed follow-up source from `feature/dated-workshops` on top of `d884ac4`. All 113 source files match the reviewed export. Release documentation was finalized after hosted verification.
+The deployment includes the reviewed direct-booking source from `feature/dated-workshops` on top of `63419c7`. All 118 source files match the reviewed export. Release documentation was finalized after hosted verification.
 
 ## Demo sign-in
 

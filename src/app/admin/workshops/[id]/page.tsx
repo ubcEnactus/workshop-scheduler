@@ -163,6 +163,7 @@ export default async function WorkshopDetail({
               endTime: clock(workshop.scheduledEnd),
               minPAs: workshop.minPAs,
               maxPAs: workshop.maxPAs,
+              hostingConfirmed: workshop.hostingConfirmed,
             }}
           />
         </Panel>

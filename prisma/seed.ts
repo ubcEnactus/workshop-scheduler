@@ -78,8 +78,8 @@ async function main() {
 
   await prisma.schedulingSettings.upsert({
     where: { id: 1 },
-    create: { id: 1, minimumGapDays: 1 },
-    update: { minimumGapDays: 1 },
+    create: { id: 1, minimumGapDays: 7 },
+    update: { minimumGapDays: 7 },
   })
   console.log('Seeding core demo data…')
 

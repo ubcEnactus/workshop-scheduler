@@ -84,7 +84,7 @@ export default async function StaffingSettings({
       </Panel>
       <Panel
         title="Assignment spacing"
-        description="Global setting across all schools. Count Vancouver calendar dates: 1 day permits Tuesday after Monday. A PA cannot work at one school twice on the same date."
+        description="Default: 7 days between assignments across all schools, measured by Vancouver calendar dates. Seven days permits the same weekday the following week. A PA cannot work at one school twice on the same date."
       >
         <form action={saveGap} className="flex flex-wrap items-end gap-4">
           {Object.entries(context).map(([key, value]) => (
@@ -100,7 +100,7 @@ export default async function StaffingSettings({
               max="365"
               step="1"
               required
-              defaultValue={snapshot.minimumGapDays ?? ''}
+              defaultValue={snapshot.minimumGapDays ?? 7}
               className="input"
             />
           </label>

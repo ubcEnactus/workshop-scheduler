@@ -80,9 +80,11 @@ export function readSchedulingContext(form: FormData, fallbackMonth?: string) {
       ['month', 'schoolId', 'classSectionId', 'view'].map((key) => [
         key,
         form.get(
-          key === 'classSectionId' && form.has('returnClassSectionId')
-            ? 'returnClassSectionId'
-            : key
+          key === 'schoolId' && form.has('returnSchoolId')
+            ? 'returnSchoolId'
+            : key === 'classSectionId' && form.has('returnClassSectionId')
+              ? 'returnClassSectionId'
+              : key
         ),
       ])
     ),

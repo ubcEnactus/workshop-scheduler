@@ -33,12 +33,12 @@ test('admin staffs and publishes a workshop after PA availability; only the corr
   await page.getByRole('button', { name: 'Save changes' }).click()
   await expect(page.getByRole('status')).toContainText('Settings saved')
   await page.goto('/admin/workshops?month=2027-01')
-  await page.getByText('Add workshop', { exact: true }).click()
-  await page.getByLabel('Class', { exact: true }).selectOption(f.cls.id)
+  await page.getByRole('link', { name: 'Book workshop', exact: true }).click()
+  await page.getByLabel('Use a saved class').selectOption(f.cls.id)
   await page.getByLabel('Vancouver date').fill('2027-01-04')
   await page.getByLabel('Start time', { exact: true }).fill('10:00')
   await page.getByLabel('End time', { exact: true }).fill('11:00')
-  await page.getByRole('button', { name: 'Create draft' }).click()
+  await page.getByRole('button', { name: 'Book workshop' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Draft saved.' })).toHaveText(
     'Draft saved.'
   )

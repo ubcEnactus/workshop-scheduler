@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Panel } from '@/components/ui/panel'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 
 import { updateTeacher } from '../../actions'
 
@@ -16,11 +17,13 @@ export default async function EditTeacherPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   await requireRole('ADMIN')
   const { id } = await params
-  const { error } = await searchParams
+  const query = await searchParams
+  const { error } = query
+  const context = parseSchedulingContext(query)
   const [teacher, schools] = await Promise.all([
     prisma.user.findFirst({ where: { id, role: 'TEACHER', deletedAt: null } }),
     prisma.school.findMany({ where: { deletedAt: null }, orderBy: { name: 'asc' } }),
@@ -34,8 +37,11 @@ export default async function EditTeacherPage({
         title="Edit teacher"
         description={`Update the account and school assignment for ${teacher.name ?? teacher.email}.`}
         actions={
-          <Link href="/admin/teachers" className={buttonClasses({ variant: 'secondary' })}>
-            Back to teachers
+          <Link
+            href={schedulingHref('/admin/classes', context)}
+            className={buttonClasses({ variant: 'secondary' })}
+          >
+            Back to classes & teachers
           </Link>
         }
       />
@@ -46,6 +52,15 @@ export default async function EditTeacherPage({
         className="max-w-2xl"
       >
         <form action={updateTeacher} className="space-y-5">
+          <input type="hidden" name="directory" value="combined" />
+          {Object.entries(context).map(([key, value]) => (
+            <input
+              key={key}
+              type="hidden"
+              name={key === 'schoolId' ? 'returnSchoolId' : key}
+              value={value}
+            />
+          ))}
           <input type="hidden" name="id" value={teacher.id} />
           <div className="field">
             <label htmlFor="teacher-name">Name</label>
@@ -87,7 +102,10 @@ export default async function EditTeacherPage({
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <SubmitButton>Save</SubmitButton>
-            <Link href="/admin/teachers" className={buttonClasses({ variant: 'ghost' })}>
+            <Link
+              href={schedulingHref('/admin/classes', context)}
+              className={buttonClasses({ variant: 'ghost' })}
+            >
               Cancel
             </Link>
           </div>
