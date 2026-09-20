@@ -66,6 +66,38 @@ try {
   )
   assert.deepEqual((await client.query('SELECT * FROM "WorkshopEvent"')).rows, events)
   assert.deepEqual((await client.query('SELECT * FROM "WorkshopChange"')).rows, changes)
+  const candidates = (await client.query('SELECT * FROM "AvailabilitySlot" ORDER BY "id"')).rows
+  const definitions = (await client.query('SELECT * FROM "WorkshopDefinition" ORDER BY "id"')).rows
+  const calendarMigration = '20260920080340_class_calendar_delivery_windows'
+  await client.query(await readFile(`prisma/migrations/${calendarMigration}/migration.sql`, 'utf8'))
+  assert.deepEqual((await client.query('SELECT * FROM "Workshop" ORDER BY "id"')).rows, migrated)
+  assert.deepEqual(
+    (await client.query('SELECT * FROM "Assignment" ORDER BY "id"')).rows,
+    assignments
+  )
+  assert.deepEqual((await client.query('SELECT * FROM "WorkshopEvent"')).rows, events)
+  assert.deepEqual((await client.query('SELECT * FROM "WorkshopChange"')).rows, changes)
+  const newCandidates = (await client.query('SELECT * FROM "AvailabilitySlot" ORDER BY "id"')).rows
+  assert.deepEqual(
+    newCandidates.map(({ classSectionId, ...slot }) => {
+      assert.equal(classSectionId, null)
+      return slot
+    }),
+    candidates
+  )
+  const newDefinitions = (await client.query('SELECT * FROM "WorkshopDefinition" ORDER BY "id"'))
+    .rows
+  assert.deepEqual(
+    newDefinitions.map(({ deliveryStartsOn, deliveryEndsOn, ...definition }) => {
+      assert.equal(deliveryStartsOn, null)
+      assert.equal(deliveryEndsOn, null)
+      return definition
+    }),
+    definitions
+  )
+  console.log(
+    'Class calendar migration verified: legacy candidates retain their original scope and every session, assignment and history row is unchanged.'
+  )
   console.log(
     'Populated migration verified: all four lifecycles, IDs, dates, assignments, batches, locks, publication metadata, and history preserved.'
   )

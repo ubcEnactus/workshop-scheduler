@@ -114,8 +114,9 @@ model ClassSection {
   schoolId  String
   school    School @relation(fields: [schoolId], references: [id])
 
-  meetings       ClassMeeting[]
-  classWorkshops ClassWorkshop[]
+  meetings          ClassMeeting[]
+  classWorkshops    ClassWorkshop[]
+  availabilitySlots AvailabilitySlot[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -147,14 +148,17 @@ enum WorkshopStatus {
 
 // Reusable curriculum. A null number marks an imported, unidentified definition.
 model WorkshopDefinition {
-  id              String          @id @default(cuid())
-  number          Int?            @unique
-  title           String
-  description     String?
-  durationMinutes Int?
-  classWorkshops  ClassWorkshop[]
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  id               String          @id @default(cuid())
+  number           Int?            @unique
+  title            String
+  description      String?
+  durationMinutes  Int?
+  // Inclusive Vancouver calendar dates, not UTC delivery instants.
+  deliveryStartsOn DateTime?       @db.Date
+  deliveryEndsOn   DateTime?       @db.Date
+  classWorkshops   ClassWorkshop[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 }
 
 enum ClassWorkshopStatus {
@@ -183,16 +187,21 @@ model ClassWorkshop {
 }
 
 model AvailabilitySlot {
-  id              String        @id @default(cuid())
-  classWorkshopId String
-  classWorkshop   ClassWorkshop @relation(fields: [classWorkshopId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  // Exactly one owner: class-wide availability, or a previously recorded
+  // workshop-specific candidate / confirmed direct booking.
+  classSectionId  String?
+  classSection    ClassSection?  @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  classWorkshopId String?
+  classWorkshop   ClassWorkshop? @relation(fields: [classWorkshopId], references: [id], onDelete: Cascade)
   start           DateTime
   end             DateTime
   notes           String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@unique([classWorkshopId, start, end])
+  @@unique([classSectionId, start, end])
 }
 
 enum SessionMode {
