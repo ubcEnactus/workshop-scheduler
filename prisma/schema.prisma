@@ -49,9 +49,11 @@ model User {
   availabilities Availability[]
 
   // Scheduling domain (back-relations)
-  classesTaught ClassSection[]   @relation("TeacherClasses") // role = TEACHER
-  assignments   Assignment[]     @relation("SessionAssignments")
-  monthlyQuotas MonthlyPAQuota[]
+  classesTaught          ClassSection[]                @relation("TeacherClasses") // role = TEACHER
+  assignments            Assignment[]                  @relation("SessionAssignments")
+  monthlyQuotas          MonthlyPAQuota[]
+  availabilityExceptions PAAvailabilityException[]
+  availabilityVersions   AvailabilityScheduleVersion[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -69,6 +71,7 @@ model School {
 
   teachers      User[]
   classSections ClassSection[]
+  closures      SchoolClosure[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -77,21 +80,35 @@ model School {
   @@index([deletedAt])
 }
 
-// Weekly-recurring availability. One row per ticked 30-minute slot, Mon–Fri
+// Weekly-recurring availability. One row per ticked 15-minute slot, Mon–Fri
 // during school hours (8:30 AM–3:00 PM). Resolving weekly slots to concrete
 // dates is the scheduler's job, not this schema's. Hard delete (AGENTS.md
 // default for new models).
 model Availability {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dayOfWeek Int // 0=Mon … 4=Fri (matches the grid UI ordering; no weekends)
-  startMin  Int // minutes from local midnight (America/Vancouver); 30-min slots. School-hours window (Mon–Fri 8:30–3) enforced in the app layer, not the DB.
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int // 0=Mon … 4=Fri (matches the grid UI ordering; no weekends)
+  startMin       Int // Vancouver minutes from midnight; 15-minute slots.
+  effectiveFrom  DateTime  @default(dbgenerated("'2000-01-01'::date")) @db.Date
+  effectiveUntil DateTime? @db.Date
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  @@unique([userId, dayOfWeek, startMin])
+  @@unique([userId, dayOfWeek, startMin, effectiveFrom])
   @@index([dayOfWeek, startMin])
+}
+
+model AvailabilityScheduleVersion {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  effectiveFrom  DateTime  @db.Date
+  effectiveUntil DateTime? @db.Date
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
+
+  @@unique([userId, effectiveFrom])
 }
 
 // --- Scheduling domain ---
@@ -114,9 +131,12 @@ model ClassSection {
   schoolId  String
   school    School @relation(fields: [schoolId], references: [id])
 
-  meetings          ClassMeeting[]
-  classWorkshops    ClassWorkshop[]
-  availabilitySlots AvailabilitySlot[]
+  meetings               ClassMeeting[]
+  classWorkshops         ClassWorkshop[]
+  availabilitySlots      AvailabilitySlot[]
+  availabilityExceptions ClassAvailabilityException[]
+  teacherTransfers       ClassTeacherTransfer[]
+  archivedAt             DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -132,9 +152,15 @@ model ClassMeeting {
   classSectionId String
   classSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
 
-  dayOfWeek   Int // 0=Mon … 4=Fri (matches Availability; no weekends)
-  startMinute Int // minutes from local midnight
-  endMinute   Int
+  dayOfWeek           Int // 0=Mon … 4=Fri (matches Availability; no weekends)
+  startMinute         Int // minutes from local midnight
+  endMinute           Int
+  effectiveFrom       DateTime  @default(dbgenerated("'2000-01-01'::date")) @db.Date
+  effectiveUntil      DateTime? @db.Date
+  activeForScheduling Boolean   @default(false)
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @default(now()) @updatedAt
 
   @@index([classSectionId])
 }
@@ -147,18 +173,27 @@ enum WorkshopStatus {
 }
 
 // Reusable curriculum. A null number marks an imported, unidentified definition.
+enum WorkshopIdentityStatus {
+  IDENTIFIED
+  NEEDS_IDENTIFICATION
+}
+
 model WorkshopDefinition {
-  id               String          @id @default(cuid())
-  number           Int?            @unique
+  id               String                 @id @default(cuid())
+  number           Int?
+  identityStatus   WorkshopIdentityStatus @default(IDENTIFIED)
+  revision         Int                    @default(0)
   title            String
   description      String?
   durationMinutes  Int?
+  defaultMinPAs    Int                    @default(1)
+  defaultMaxPAs    Int                    @default(3)
   // Inclusive Vancouver calendar dates, not UTC delivery instants.
-  deliveryStartsOn DateTime?       @db.Date
-  deliveryEndsOn   DateTime?       @db.Date
+  deliveryStartsOn DateTime?              @db.Date
+  deliveryEndsOn   DateTime?              @db.Date
   classWorkshops   ClassWorkshop[]
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
 }
 
 enum ClassWorkshopStatus {
@@ -167,6 +202,7 @@ enum ClassWorkshopStatus {
   SCHEDULED
   COMPLETED
   CANCELLED
+  WAIVED
 }
 
 model ClassWorkshop {
@@ -177,6 +213,10 @@ model ClassWorkshop {
   workshopDefinition   WorkshopDefinition  @relation(fields: [workshopDefinitionId], references: [id])
   status               ClassWorkshopStatus @default(NEEDS_AVAILABILITY)
   notes                String?
+  revision             Int                 @default(0)
+  waivedAt             DateTime?
+  waivedById           String?
+  waiverReason         String?
   availabilitySlots    AvailabilitySlot[]
   sessions             WorkshopSession[]
   createdAt            DateTime            @default(now())
@@ -218,18 +258,26 @@ model WorkshopSession {
   batchId         String?
   batch           WorkshopBatch? @relation(fields: [batchId], references: [id])
 
-  scheduledStart   DateTime // UTC; required before staffing
-  scheduledEnd     DateTime
-  minPAs           Int            @default(1)
-  maxPAs           Int            @default(3)
-  status           WorkshopStatus @default(DRAFT)
-  version          Int            @default(0)
-  locked           Boolean        @default(false)
-  hostingConfirmed Boolean        @default(false)
-  publishedAt      DateTime?
-  mode             SessionMode    @default(IN_PERSON)
-  location         String?
-  notes            String?
+  scheduledStart          DateTime // UTC; required before staffing
+  scheduledEnd            DateTime
+  minPAs                  Int            @default(1)
+  maxPAs                  Int            @default(3)
+  status                  WorkshopStatus @default(DRAFT)
+  version                 Int            @default(0)
+  locked                  Boolean        @default(false)
+  hostingConfirmed        Boolean        @default(false)
+  publishedAt             DateTime?
+  mode                    SessionMode    @default(IN_PERSON)
+  location                String?
+  notes                   String?
+  participantInstructions String?
+  dateExceptionReason     String?
+  dateExceptionApprovedBy String?
+  dateExceptionApprovedAt DateTime?
+  availabilityBasis       Json?
+  hostTeacherName         String?
+  hostClassName           String?
+  hostSchoolName          String?
 
   assignments Assignment[]
   changes     WorkshopChange[]
@@ -292,6 +340,9 @@ model WorkshopEvent {
   after             Json
   wasPublished      Boolean
   affectedPAIds     String[]
+  communicatedAt    DateTime?
+  communicatedById  String?
+  communicationNote String?
   createdAt         DateTime        @default(now())
 
   @@index([workshopSessionId, createdAt], map: "WorkshopEvent_workshopId_createdAt_idx")
@@ -335,10 +386,89 @@ model Assignment {
   pa                User             @relation("SessionAssignments", fields: [paId], references: [id])
   status            AssignmentStatus @default(DRAFT)
   source            AssignmentSource @default(MANUAL)
+  overrideSameDay   Boolean          @default(false)
+  overrideWeek      Boolean          @default(false)
+  overrideReason    String?
   assignedAt        DateTime         @default(now())
 
   @@unique([workshopSessionId, paId], map: "Assignment_workshopId_paId_key")
   @@index([paId])
+}
+
+enum ClassAvailabilityExceptionKind {
+  CLOSED
+  ADDITIONAL
+}
+
+model ClassAvailabilityException {
+  id             String                         @id @default(cuid())
+  classSectionId String
+  classSection   ClassSection                   @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  date           DateTime                       @db.Date
+  kind           ClassAvailabilityExceptionKind
+  startMinute    Int?
+  endMinute      Int?
+  notes          String?
+  createdAt      DateTime                       @default(now())
+  updatedAt      DateTime                       @updatedAt
+
+  @@index([classSectionId, date])
+}
+
+model SchoolClosure {
+  id          String   @id @default(cuid())
+  schoolId    String
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  startMinute Int?
+  endMinute   Int?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([schoolId, date])
+}
+
+enum PAAvailabilityExceptionKind {
+  UNAVAILABLE
+  AVAILABLE
+}
+
+model PAAvailabilityException {
+  id          String                      @id @default(cuid())
+  userId      String
+  user        User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime                    @db.Date
+  kind        PAAvailabilityExceptionKind
+  startMinute Int?
+  endMinute   Int?
+  notes       String?
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  @@index([userId, date])
+}
+
+model EnrollmentBatch {
+  id          String   @id @default(cuid())
+  requestKey  String   @unique
+  actorId     String
+  payloadHash String
+  createdAt   DateTime @default(now())
+}
+
+model ClassTeacherTransfer {
+  id             String       @id @default(cuid())
+  classSectionId String
+  classSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  fromTeacherId  String
+  toTeacherId    String
+  effectiveOn    DateTime     @db.Date
+  actorId        String
+  reason         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([classSectionId, effectiveOn])
 }
 
 // --- NextAuth adapter tables ---
