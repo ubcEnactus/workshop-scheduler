@@ -458,15 +458,18 @@ model EnrollmentBatch {
 }
 
 model ClassTeacherTransfer {
-  id             String       @id @default(cuid())
-  classSectionId String
-  classSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
-  fromTeacherId  String
-  toTeacherId    String
-  effectiveOn    DateTime     @db.Date
-  actorId        String
-  reason         String?
-  createdAt      DateTime     @default(now())
+  id                 String       @id @default(cuid())
+  classSectionId     String
+  classSection       ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+  fromTeacherId      String
+  toTeacherId        String
+  effectiveOn        DateTime     @db.Date
+  actorId            String
+  reason             String?
+  cancelledAt        DateTime?
+  cancelledById      String?
+  cancellationReason String?
+  createdAt          DateTime     @default(now())
 
   @@index([classSectionId, effectiveOn])
 }
