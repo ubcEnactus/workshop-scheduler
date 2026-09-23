@@ -379,17 +379,18 @@ model SchedulingSettings {
 
 // A PA assigned by an admin. Drafts are private; published assignments are official.
 model Assignment {
-  id                String           @id @default(cuid())
-  workshopSessionId String           @map("workshopId")
-  workshopSession   WorkshopSession  @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
-  paId              String
-  pa                User             @relation("SessionAssignments", fields: [paId], references: [id])
-  status            AssignmentStatus @default(DRAFT)
-  source            AssignmentSource @default(MANUAL)
-  overrideSameDay   Boolean          @default(false)
-  overrideWeek      Boolean          @default(false)
-  overrideReason    String?
-  assignedAt        DateTime         @default(now())
+  id                   String           @id @default(cuid())
+  workshopSessionId    String           @map("workshopId")
+  workshopSession      WorkshopSession  @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
+  paId                 String
+  pa                   User             @relation("SessionAssignments", fields: [paId], references: [id])
+  status               AssignmentStatus @default(DRAFT)
+  source               AssignmentSource @default(MANUAL)
+  overrideAvailability Boolean          @default(false)
+  overrideSameDay      Boolean          @default(false)
+  overrideWeek         Boolean          @default(false)
+  overrideReason       String?
+  assignedAt           DateTime         @default(now())
 
   @@unique([workshopSessionId, paId], map: "Assignment_workshopId_paId_key")
   @@index([paId])
