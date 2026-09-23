@@ -54,6 +54,7 @@ model User {
   monthlyQuotas          MonthlyPAQuota[]
   availabilityExceptions PAAvailabilityException[]
   availabilityVersions   AvailabilityScheduleVersion[]
+  autoFillExclusions      AutoFillExclusion[]
 
   deletedAt DateTime?
   createdAt DateTime  @default(now())
@@ -192,6 +193,7 @@ model WorkshopDefinition {
   deliveryStartsOn DateTime?              @db.Date
   deliveryEndsOn   DateTime?              @db.Date
   classWorkshops   ClassWorkshop[]
+  draftStaffingOperations DraftStaffingOperation[]
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 }
@@ -282,6 +284,7 @@ model WorkshopSession {
   assignments Assignment[]
   changes     WorkshopChange[]
   events      WorkshopEvent[]
+  autoFillExclusions AutoFillExclusion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -312,6 +315,38 @@ model MatchingPreview {
   createdAt DateTime  @default(now())
   expiresAt DateTime
   appliedAt DateTime?
+}
+
+// Private draft command receipts: retries and Undo never restore a whole schedule.
+model DraftStaffingOperation {
+  id                   String   @id @default(cuid())
+  requestKey           String   @unique
+  actorId              String
+  workshopDefinitionId String
+  workshopDefinition   WorkshopDefinition @relation(fields: [workshopDefinitionId], references: [id], onDelete: Cascade)
+  payloadHash          String
+  kind                 String
+  summary              String
+  changes              Json
+  createdAt            DateTime @default(now())
+  undoneAt             DateTime?
+  undoRequestKey       String? @unique
+  undoActorId          String?
+
+  @@index([workshopDefinitionId, actorId, createdAt])
+}
+
+// A manual removal is a session-specific choice, not global PA unavailability.
+model AutoFillExclusion {
+  id                String @id @default(cuid())
+  workshopSessionId String
+  workshopSession   WorkshopSession @relation(fields: [workshopSessionId], references: [id], onDelete: Cascade)
+  paId              String
+  pa                User @relation(fields: [paId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@unique([workshopSessionId, paId])
+  @@index([paId])
 }
 
 model WorkshopChange {
