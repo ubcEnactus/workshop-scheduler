@@ -15,12 +15,25 @@ export type AvailabilitySlot = {
   startMin: number
 }
 
+export type EffectiveAvailabilitySlot = AvailabilitySlot & {
+  effectiveFrom: Date | string
+  effectiveUntil?: Date | string | null
+}
+
+export type PAAvailabilityExceptionInput = {
+  userId: string
+  date: Date | string
+  kind: 'AVAILABLE' | 'UNAVAILABLE'
+  startMinute?: number | null
+  endMinute?: number | null
+}
+
 /**
- * Collapse ticked 30-minute slots into contiguous windows.
+ * Collapse ticked 15-minute slots into contiguous windows.
  *
  * `Availability` stores one row per ticked slot, but the matcher asks whether
  * a single window covers a whole class meeting. Without this, a 60-minute
- * meeting is covered by no 30-minute row and nobody is ever available —
+ * meeting is covered by no 15-minute row and nobody is ever available —
  * the scheduler runs clean and assigns no one.
  *
  * Slots are merged per (user, day) when one ends exactly where the next
@@ -60,4 +73,77 @@ export function coalesceAvailability(slots: AvailabilitySlot[]): PAAvailability[
   }
 
   return windows
+}
+
+function dateOnly(value: Date | string): string {
+  return typeof value === 'string' ? value.slice(0, 10) : value.toISOString().slice(0, 10)
+}
+
+function dateWeekday(date: string): number {
+  return (new Date(`${date}T12:00:00Z`).getUTCDay() + 6) % 7
+}
+
+function validWindow(startMinute: number | null | undefined, endMinute: number | null | undefined) {
+  return (
+    startMinute != null &&
+    endMinute != null &&
+    Number.isInteger(startMinute) &&
+    Number.isInteger(endMinute) &&
+    startMinute >= 0 &&
+    endMinute <= 1440 &&
+    startMinute < endMinute
+  )
+}
+
+/** Full-interval PA coverage after effective dates and one-off exceptions. */
+export function paAvailabilityCoversInterval(input: {
+  paId: string
+  date: string
+  startMinute: number
+  endMinute: number
+  slots: EffectiveAvailabilitySlot[]
+  exceptions?: PAAvailabilityExceptionInput[]
+}): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || !validWindow(input.startMinute, input.endMinute))
+    return false
+  const recurring = coalesceAvailability(
+    input.slots.filter(
+      (slot) =>
+        slot.userId === input.paId &&
+        slot.dayOfWeek === dateWeekday(input.date) &&
+        dateOnly(slot.effectiveFrom) <= input.date &&
+        (!slot.effectiveUntil || input.date <= dateOnly(slot.effectiveUntil))
+    )
+  ).map((window) => ({ startMinute: window.startMinute, endMinute: window.endMinute }))
+  const exceptions = (input.exceptions ?? []).filter(
+    (item) => item.userId === input.paId && dateOnly(item.date) === input.date
+  )
+  const available = [
+    ...recurring,
+    ...exceptions
+      .filter((item) => item.kind === 'AVAILABLE' && validWindow(item.startMinute, item.endMinute))
+      .map((item) => ({ startMinute: item.startMinute!, endMinute: item.endMinute! })),
+  ]
+    .sort((a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute)
+    .reduce<{ startMinute: number; endMinute: number }[]>((merged, window) => {
+      const current = merged.at(-1)
+      if (current && window.startMinute <= current.endMinute) {
+        current.endMinute = Math.max(current.endMinute, window.endMinute)
+      } else merged.push({ ...window })
+      return merged
+    }, [])
+  const unavailable = exceptions.filter((item) => item.kind === 'UNAVAILABLE')
+  if (
+    unavailable.some(
+      (item) =>
+        (item.startMinute == null && item.endMinute == null) ||
+        (validWindow(item.startMinute, item.endMinute) &&
+          item.startMinute! < input.endMinute &&
+          input.startMinute < item.endMinute!)
+    )
+  )
+    return false
+  return available.some(
+    (window) => window.startMinute <= input.startMinute && window.endMinute >= input.endMinute
+  )
 }

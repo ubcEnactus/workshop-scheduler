@@ -1,23 +1,11 @@
 'use client'
-import { ReadyFields } from './ready-fields'
 import Link from 'next/link'
 import { useActionState, useState } from 'react'
-import { SubmitButton } from '@/components/submit-button'
-import { DAY_LABELS, formatSlotRange } from '@/lib/time'
-import { suggestedSlots } from '@/lib/scheduling/date-suggestions'
-import { schedulingHref, type SchedulingContext } from '@/lib/scheduling/navigation'
+import { ReadyFields } from './ready-fields'
+import { SubmitButton } from './submit-button'
+import type { SchedulingContext } from '@/lib/scheduling/navigation'
 import type { WorkshopFormState } from '@/lib/schemas/form-state'
-export type WorkshopClass = {
-  id: string
-  name: string
-  school: { name: string }
-  teacher: { name: string | null; email: string }
-  meetings: { dayOfWeek: number; startMinute: number; endMinute: number }[]
-  defaultDurationMinutes: number
-  defaultMinPAs: number
-  defaultMaxPAs: number
-  busy?: { start: string; end: string }[]
-}
+
 type Values = {
   classSectionId: string
   date: string
@@ -34,12 +22,18 @@ export function WorkshopForm({
   initial,
 }: {
   action: (state: WorkshopFormState, form: FormData) => Promise<WorkshopFormState>
-  classes: WorkshopClass[]
+  classes: {
+    id: string
+    name: string
+    school: { name: string }
+    candidates: { classWorkshopId: string; date: string; startTime: string; endTime: string }[]
+  }[]
   month: string
   context?: SchedulingContext
-  initial?: {
+  initial: {
     id: string
     version: number
+    workshopDefinitionId: string
     classSectionId: string
     date: string
     startTime: string
@@ -47,44 +41,30 @@ export function WorkshopForm({
     minPAs: number
     maxPAs: number
     hostingConfirmed?: boolean
+    mode?: 'IN_PERSON' | 'ONLINE'
+    location?: string | null
+    notes?: string | null
+    participantInstructions?: string | null
   }
 }) {
-  const selected = classes.find(
-    (c) => c.id === (initial?.classSectionId ?? context?.classSectionId)
-  )
   const [values, setValues] = useState<Values>({
-    classSectionId: initial?.classSectionId ?? selected?.id ?? '',
-    date: initial?.date ?? '',
-    startTime: initial?.startTime ?? '',
-    endTime: initial?.endTime ?? '',
-    minPAs: String(initial?.minPAs ?? selected?.defaultMinPAs ?? 1),
-    maxPAs: String(initial?.maxPAs ?? selected?.defaultMaxPAs ?? 3),
+    ...initial,
+    minPAs: String(initial.minPAs),
+    maxPAs: String(initial.maxPAs),
   })
-  const [duration, setDuration] = useState(String(selected?.defaultDurationMinutes ?? 60))
-  const [touched, setTouched] = useState<Set<string>>(
-    new Set(initial ? ['date', 'startTime', 'endTime', 'minPAs', 'maxPAs', 'duration'] : [])
-  )
-  const [notice, setNotice] = useState('')
   const [state, formAction, pending] = useActionState(action, {})
   const cls = classes.find((c) => c.id === values.classSectionId)
-  const options = cls ? suggestedSlots(cls, month, Number(duration)) : []
-  function change(key: keyof Values, value: string) {
-    setTouched(new Set([...touched, key]))
-    setValues({ ...values, [key]: value })
-  }
   return (
     <form action={formAction} className="space-y-4">
       <ReadyFields disabled={pending}>
+        <input type="hidden" name="id" value={initial.id} />
+        <input type="hidden" name="version" value={initial.version} />
+        <input type="hidden" name="workshopDefinitionId" value={initial.workshopDefinitionId} />
         <input type="hidden" name="month" value={context?.month ?? month} />
-        {context?.schoolId && <input type="hidden" name="schoolId" value={context.schoolId} />}
+        <input type="hidden" name="schoolId" value={context?.schoolId ?? ''} />
         <input type="hidden" name="returnClassSectionId" value={context?.classSectionId ?? ''} />
-        {context?.view && <input type="hidden" name="view" value={context.view} />}{' '}
-        {initial && (
-          <>
-            <input type="hidden" name="id" value={initial.id} />
-            <input type="hidden" name="version" value={initial.version} />
-          </>
-        )}
+        <input type="hidden" name="view" value={context?.view ?? 'all'} />
+        <input type="hidden" name="batch" value={context?.batch ?? ''} />
         {state.error && (
           <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
             {state.error} Your entries have been kept.
@@ -93,157 +73,104 @@ export function WorkshopForm({
         <label className="field">
           Class
           <select
-            aria-label="Class"
             className="input"
             name="classSectionId"
-            required
             value={values.classSectionId}
-            onChange={(e) => {
-              const next = classes.find((c) => c.id === e.target.value)
-              setValues({
-                ...values,
-                classSectionId: e.target.value,
-                minPAs: touched.has('minPAs') ? values.minPAs : String(next?.defaultMinPAs ?? 1),
-                maxPAs: touched.has('maxPAs') ? values.maxPAs : String(next?.defaultMaxPAs ?? 3),
-              })
-              if (!touched.has('duration')) setDuration(String(next?.defaultDurationMinutes ?? 60))
-              setNotice(
-                'Class selected. Any dates and times you entered have been kept; check them against this class’s availability.'
-              )
-            }}
+            onChange={(e) => setValues({ ...values, classSectionId: e.target.value })}
           >
-            <option value="">Select a class…</option>
             {classes.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name} · {c.school.name} · {c.teacher.name ?? c.teacher.email}
+                {c.name} · {c.school.name}
               </option>
             ))}
           </select>
         </label>
-        {cls &&
-          !(initial?.hostingConfirmed && values.classSectionId === initial.classSectionId) && (
-            <div className="space-y-3 rounded-lg bg-slate-50 p-4">
-              <p className="text-sm font-medium">
-                Class availability:{' '}
-                {cls.meetings
-                  .map(
-                    (m) =>
-                      DAY_LABELS[m.dayOfWeek] +
-                      ' ' +
-                      formatSlotRange(m.startMinute, m.endMinute - m.startMinute)
-                  )
-                  .join('; ') || 'No availability recorded.'}
-              </p>
-              <label className="field max-w-xs">
-                Suggested duration (minutes)
-                <input
-                  className="input"
-                  type="number"
-                  min="1"
-                  max="1440"
-                  value={duration}
-                  onChange={(e) => {
-                    setDuration(e.target.value)
-                    setTouched(new Set([...touched, 'duration']))
-                  }}
-                />
-              </label>
-              <label className="field">
-                Suggested date and time
-                <select
-                  aria-label="Suggested date and time"
-                  className="input"
-                  value=""
-                  onChange={(e) => {
-                    if (!e.target.value) return
-                    const slot = options[Number(e.target.value)]
-                    if (slot) {
-                      setValues({ ...values, ...slot })
-                      setTouched(new Set([...touched, 'date', 'startTime', 'endTime']))
-                      setNotice('Date and time selected. Review before saving.')
-                    }
-                  }}
-                >
-                  <option value="">Choose a suggested slot…</option>
-                  {options.map((s, i) => (
-                    <option key={s.date + s.startTime} value={i}>
-                      {s.date} · {s.startTime}–{s.endTime}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!options.length && (
-                <p className="text-sm text-amber-800">
-                  No suitable slots for this duration in {month}.{' '}
-                  <Link
-                    className="underline"
-                    href={schedulingHref(
-                      '/admin/classes/' + cls.id + '/edit',
-                      context ?? { month }
-                    )}
-                  >
-                    Review class availability
-                  </Link>
-                  .
-                </p>
-              )}
-              <p className="text-xs text-slate-500">
-                Suggestions use recorded availability and existing workshops. Confirm school
-                holidays separately.
-              </p>
-            </div>
-          )}
-        {notice && (
-          <p role="status" className="text-xs text-slate-600">
-            {notice}
-          </p>
-        )}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <label className="field">
+          Candidate date and time
+          <select
+            className="input"
+            value=""
+            onChange={(e) => {
+              const candidate = cls?.candidates[Number(e.target.value)]
+              if (e.target.value && candidate) setValues({ ...values, ...candidate })
+            }}
+          >
+            <option value="">Choose a recorded candidate…</option>
+            {cls?.candidates.map((slot, index) => (
+              <option key={index} value={index}>
+                {slot.date} · {slot.startTime}–{slot.endTime}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Link className="text-sm underline" href={'/admin/classes/' + values.classSectionId}>
+          Manage this teacher’s workshop availability
+        </Link>
+        <div className="form-grid">
           {(
             [
-              { key: 'date', label: 'Vancouver date', type: 'date' },
-              { key: 'startTime', label: 'Start time', type: 'time' },
-              { key: 'endTime', label: 'End time', type: 'time' },
-              { key: 'minPAs', label: 'Minimum PAs', type: 'number' },
-              { key: 'maxPAs', label: 'Maximum PAs', type: 'number' },
+              ['date', 'Vancouver date', 'date'],
+              ['startTime', 'Start time', 'time'],
+              ['endTime', 'End time', 'time'],
+              ['minPAs', 'Minimum PAs', 'number'],
+              ['maxPAs', 'Maximum PAs', 'number'],
             ] as const
-          ).map((field) => (
-            <label key={field.key} className="field">
-              {field.label}
+          ).map(([name, label, type]) => (
+            <label key={name} className="field">
+              {label}
               <input
-                aria-label={field.label}
+                aria-label={label}
                 className="input"
-                name={field.key}
-                type={field.type}
-                min={field.type === 'number' ? '1' : undefined}
+                name={name}
+                type={type}
+                step={type === 'time' ? 900 : undefined}
+                min={type === 'number' ? '1' : undefined}
                 required
-                value={values[field.key]}
-                onChange={(e) => change(field.key, e.target.value)}
-                aria-invalid={!!state.fields?.[field.key]}
-                aria-describedby={
-                  state.fields?.[field.key] ? 'workshop-error-' + field.key : undefined
-                }
+                value={values[name]}
+                onChange={(e) => setValues({ ...values, [name]: e.target.value })}
+                aria-invalid={!!state.fields?.[name]}
               />
-              {state.fields?.[field.key] && (
-                <span id={'workshop-error-' + field.key} className="text-xs text-red-800">
-                  {state.fields[field.key]}
-                </span>
+              {state.fields?.[name] && (
+                <span className="text-xs text-red-800">{state.fields[name]}</span>
               )}
             </label>
           ))}
         </div>
+        <div className="form-grid">
+          <input type="hidden" name="mode" value="IN_PERSON" />
+          <label className="field">
+            Location
+            <input
+              className="input"
+              name="location"
+              maxLength={500}
+              defaultValue={initial.location ?? ''}
+            />
+          </label>
+          <label className="field">
+            Participant instructions
+            <textarea
+              className="input"
+              name="participantInstructions"
+              maxLength={5000}
+              defaultValue={initial.participantInstructions ?? ''}
+            />
+          </label>
+          <label className="field">
+            Internal admin notes
+            <textarea
+              className="input"
+              name="notes"
+              maxLength={5000}
+              defaultValue={initial.notes ?? ''}
+            />
+          </label>
+        </div>
         <p className="text-xs text-slate-500">
-          {initial?.hostingConfirmed && values.classSectionId === initial.classSectionId
-            ? 'Vancouver time. Saving confirms this class’s date and time directly and updates the private draft.'
-            : 'Vancouver time. The full workshop must fit within one class availability block. Saving creates or updates a private draft.'}
+          Vancouver time. The full session must fit a candidate window for this teacher and workshop
+          definition. Saving updates the private draft.
         </p>
-        {classes.length ? (
-          <SubmitButton>{initial ? 'Save draft' : 'Create draft'}</SubmitButton>
-        ) : (
-          <p className="text-sm text-amber-800">
-            Add an active class and its availability before creating a workshop.
-          </p>
-        )}
+        <SubmitButton>Save draft</SubmitButton>
       </ReadyFields>
     </form>
   )

@@ -25,6 +25,7 @@ try {
       VALUES ('event','old-PUBLISHED','admin','Admin','PUBLISH','Preserve history','{}','{}',true,ARRAY['pa']);
     INSERT INTO "WorkshopChange" ("id","workshopId","actorId","payload","before","proposed") VALUES ('change','old-PUBLISHED','admin','{}','{}','{}');
   `)
+  const schools = (await client.query('SELECT * FROM "School" ORDER BY "id"')).rows
   const originals = (await client.query('SELECT * FROM "Workshop" ORDER BY "id"')).rows
   const assignments = (await client.query('SELECT * FROM "Assignment" ORDER BY "id"')).rows
   const events = (await client.query('SELECT * FROM "WorkshopEvent"')).rows
@@ -97,6 +98,78 @@ try {
   )
   console.log(
     'Class calendar migration verified: legacy candidates retain their original scope and every session, assignment and history row is unchanged.'
+  )
+  await client.query(`
+    INSERT INTO "Availability" ("id","userId","dayOfWeek","startMin","updatedAt") VALUES ('legacy-slot','pa',0,600,now()),('legacy-last-slot','pa',4,1410,now());
+    INSERT INTO "ClassMeeting" ("id","classSectionId","dayOfWeek","startMinute","endMinute") VALUES ('legacy-reference','class',0,540,720);
+  `)
+  const beforeRun = (await client.query('SELECT * FROM "Workshop" ORDER BY "id"')).rows
+  for (const migration of migrations.filter((name) => name > calendarMigration))
+    await client.query(await readFile(`prisma/migrations/${migration}/migration.sql`, 'utf8'))
+  assert.deepEqual(
+    (await client.query('SELECT * FROM "School" ORDER BY "id"')).rows,
+    schools.map((school) =>
+      Object.fromEntries(Object.entries(school).filter(([key]) => key !== 'district'))
+    )
+  )
+  const afterRun = (await client.query('SELECT * FROM "Workshop" ORDER BY "id"')).rows
+  for (let index = 0; index < beforeRun.length; index++) {
+    for (const [key, value] of Object.entries(beforeRun[index]))
+      assert.deepEqual(afterRun[index][key], value)
+    assert.equal(afterRun[index].hostClassName, 'Preserved class')
+    assert.equal(afterRun[index].hostSchoolName, 'Preserved school')
+    assert.equal(afterRun[index].hostTeacherName, 'teacher@test.local')
+    assert.equal(afterRun[index].dateExceptionReason, null)
+  }
+  const quarterHours = (
+    await client.query(
+      'SELECT "id","dayOfWeek","startMin" FROM "Availability" ORDER BY "dayOfWeek","startMin"'
+    )
+  ).rows
+  assert.deepEqual(
+    quarterHours.map((slot) => [slot.dayOfWeek, slot.startMin]),
+    [
+      [0, 600],
+      [0, 615],
+      [4, 1410],
+      [4, 1425],
+    ]
+  )
+  assert.equal(quarterHours[0].id, 'legacy-slot')
+  assert.equal(quarterHours[2].id, 'legacy-last-slot')
+  assert.equal(
+    (
+      await client.query(
+        'SELECT "activeForScheduling" FROM "ClassMeeting" WHERE "id"=\'legacy-reference\''
+      )
+    ).rows[0].activeForScheduling,
+    false
+  )
+  assert.equal(
+    (
+      await client.query(
+        'SELECT count(*)::int AS n FROM "WorkshopDefinition" WHERE "identityStatus"=\'NEEDS_IDENTIFICATION\''
+      )
+    ).rows[0].n,
+    definitions.length
+  )
+  for (const [table, original] of [
+    ['Assignment', assignments],
+    ['WorkshopEvent', events],
+    ['WorkshopChange', changes],
+  ]) {
+    const rows = (await client.query(`SELECT * FROM "${table}" ORDER BY "id"`)).rows
+    assert.equal(rows.length, original.length)
+    for (const old of original)
+      for (const [key, value] of Object.entries(old))
+        assert.deepEqual(rows.find((row) => row.id === old.id)[key], value)
+  }
+  await assert.rejects(
+    client.query('UPDATE "Assignment" SET "overrideSameDay"=true WHERE "id"=\'a-old-PUBLISHED\''),
+    /Assignment_override_reason/
+  )
+  console.log(
+    'Run-planning migration verified: 15-minute coverage, original IDs/history, inactive legacy recurrence, host snapshots and override checks preserved.'
   )
   console.log(
     'Populated migration verified: all four lifecycles, IDs, dates, assignments, batches, locks, publication metadata, and history preserved.'

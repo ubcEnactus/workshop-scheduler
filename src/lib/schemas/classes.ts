@@ -36,6 +36,12 @@ export const classSectionIdSchema = z.object({
   id: z.string().min(1),
 })
 
+export const classLifecycleSchema = z.object({
+  id: z.string().min(1),
+  action: z.enum(['ARCHIVE', 'REACTIVATE']),
+  expectedUpdatedAt: z.iso.datetime(),
+})
+
 export const classMeetingIdSchema = z.object({
   id: z.string().min(1),
 })

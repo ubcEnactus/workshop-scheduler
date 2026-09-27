@@ -10,13 +10,21 @@ Stack: Next.js 15 App Router, Prisma 6, Auth.js v5, Tailwind v4, and strict Type
 
 ## Product rules
 
+- Schools and teachers are the only setup entities. Each teacher owns one implicit scheduling profile; `ClassSection.teacherId` is unique. Do not restore separate class creation, labels, multiple classes per teacher, or teacher transfers. Availability, exceptions, defaults, and run enrollment are managed through the teacher. See `docs/TEACHER_SCHEDULING.md`.
+
+These rules describe the implemented run-planning contract. See `docs/IMPLEMENTATION_REVIEW.md` for validation and review status, and `docs/IMPLEMENTATION_PLAN.md` for the acceptance criteria.
+
 - The admin controls the schedule. Only admins create or change workshops, assignments, publishing, cancellations, replacements, and completion state.
-- Teachers are view-only. They provide schedules outside the app; admins record those schedules as class meeting times.
+- Teachers are school-wide view-only. They provide weekly time blocks outside the app; admins record class availability with effective dates and exceptions. Named workshop runs have shared, inclusive Vancouver delivery windows. Automatic date suggestions fit availability and the window; admins can explicitly move one session outside the window with a recorded exception. Legacy candidates retain scope, and weekly reference rows require activation before authorizing dates.
+- One representative class has one non-cancelled session per run. Combined classes use an admin note on the representative class, not new grouping logic. Another visit is another run, including a temporary one.
 - PAs submit recurring availability and view published assignments. They do not accept, decline, or edit assignments.
-- A workshop has a real date and time before matching begins. **Assign PAs** only staffs existing workshop slots; it never creates, moves, or dates them.
-- Planning follows calendar months. There is no cycle or term workflow.
-- Automatic matching respects PA availability, monthly quotas, and a configurable gap between assignments. It may leave a workshop unstaffed rather than break a constraint.
-- Admin edits and published work must survive a matcher rerun.
+- A workshop has a real date and time before staffing begins. **Auto-fill missing PAs** adds only the residual minimum to selected dated drafts; it never replaces existing PAs or creates, moves, or dates sessions. Manual and automatic staffing save directly to the private draft with operation-scoped Undo; there is no expiring proposal/apply stage.
+- Planning starts with a named run/window and explicit class enrollment; calendar months are session views. No automatic monthly class obligations or cycle/term workflow. Use 15-minute scheduling increments while preserving legacy coverage and exact historical times.
+- Automatic PA assignment requires full availability, at most one session per day and initially one per week. On every manual assignment screen, missing/partial availability and same-day/same-week workload are visible warnings only; clicking Assign/Add records the relevant exceptions without an override form, checkbox, separate reason or confirmation step. Same-day warnings remain prominent red; same-week warnings remain amber. Preserve per-assignment exceptions through publication and matcher reruns. Overlapping assignments remain blocked for both automatic and manual actions. The earlier prohibition on consecutive classes at the same school remains separate. Weekly capacity uses Monday–Friday in America/Vancouver and resets the following Monday; no rolling seven-day gap applies.
+- Candidate counts separate recommended PAs from available PAs needing workload overrides; hard-blocked PAs count in neither group. Lifetime workload affects ranking only. Batch Ready requires a valid staffing preview; a failed heuristic search is not proof of an unavoidable shortage or required override. Warnings use text/icons as well as color.
+- Monthly quotas are not assignment prerequisites. Prefer suitable PAs with fewer total assignments as soft fairness; any workload cap is separately configured. No per-run/title PA cap is implied. Automatic matching may leave a session unstaffed rather than break its rules.
+- Auto-fill preserves every existing assignment and exception, including automatic assignments. Manual removals exclude that PA from auto-fill for the session until explicitly allowed/added again. Existing locks mean Auto-fill off; new manual edits do not auto-lock. Published/historical sessions are never draft auto-fill targets. Undo must revalidate restored assignments against current commitments and never overwrite subsequent edits or publication.
+- Ready class sessions can publish individually or in a batch. Initial publication needs valid staffing; a later admin PA removal may leave a published session with a visible staffing deficit. Do not force cancellation to record a withdrawal. Communication remains manual for the pilot; teacher enhancements are low priority.
 
 ## Code rules
 
@@ -34,9 +42,9 @@ Stack: Next.js 15 App Router, Prisma 6, Auth.js v5, Tailwind v4, and strict Type
 
 ## Current handoff point
 
-The app currently has invite-only magic-link auth, admin management for schools, teachers, PAs, classes and class meeting times, PA availability, and read-only PA/teacher dashboards.
+The app implements named runs, reviewed bulk class enrollment, coverage and waivers, effective recurring class/PA availability and exceptions, 15-minute planning, bounded staffing previews, lifetime fairness, explicit admin date/day/week exceptions, atomic reviewed edits, archive/reactivation, publication, and per-change communication tasks. Monthly quotas and rolling assignment gaps are retained only as legacy data; they never authorize or block assignment.
 
-The obsolete cycle and schedule screens have been removed, but the legacy `Cycle` relationship and old scheduling statuses remain in Prisma until a developer can create and verify the database migration. Do not expose that legacy model in new UI. The next scheduling feature should replace it with admin-created dated workshops, then add monthly quotas, assignment gaps, locking, and publishing in that order.
+Cycle is removed. WorkshopSession maps to the existing Workshop database table to preserve IDs and history. All scheduling relationships go through ClassWorkshop; assignments point to sessions. There is one PA assignment type and no manager distinction. Read docs/CLASS_WORKSHOPS.md for migration and workflow details.
 
 ## Before handoff
 

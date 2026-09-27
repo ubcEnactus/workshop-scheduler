@@ -1,3 +1,4 @@
+import { createSessionFixture } from '../fixtures'
 import { test, expect } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { resetFixtures } from '../fixtures'
@@ -12,12 +13,14 @@ test('detail staffing, locking and publication retain the filtered return view',
   page,
 }) => {
   const f = await resetFixtures()
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
-  await prisma.monthlyPAQuota.create({ data: { paId: f.pa.id, month: '2027-01', quota: 2 } })
   await prisma.availability.createMany({
-    data: [600, 630].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 0, startMin })),
+    data: [600, 615, 630, 645].map((startMin) => ({
+      userId: f.pa.id,
+      dayOfWeek: 0,
+      startMin,
+    })),
   })
-  const workshop = await prisma.workshop.create({
+  const workshop = await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       scheduledStart: vancouverToUtc('2027-01-04', 600),
@@ -25,6 +28,10 @@ test('detail staffing, locking and publication retain the filtered return view',
       minPAs: 1,
       maxPAs: 1,
     },
+  })
+  const { workshopDefinitionId } = await prisma.classWorkshop.findUniqueOrThrow({
+    where: { id: workshop.classWorkshopId },
+    select: { workshopDefinitionId: true },
   })
   await login(page, f.admin.email, 'admin')
   const context = new URLSearchParams({
@@ -34,10 +41,14 @@ test('detail staffing, locking and publication retain the filtered return view',
     view: 'draft',
   }).toString()
   await page.goto('/admin/workshops/' + workshop.id + '?' + context)
-  await page.getByText('Choose a PA', { exact: true }).click()
   await page.getByRole('button', { name: 'Assign Fixture PA', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Remove PA', exact: true })).toBeVisible()
-  for (const action of ['Unlock draft', 'Lock draft', 'Publish workshop']) {
+  for (const action of ['Exclude session from auto-fill', 'Allow auto-fill', 'Publish session']) {
+    if (
+      action !== 'Publish session' &&
+      !(await page.getByRole('button', { name: action, exact: true }).isVisible())
+    )
+      await page.getByText('Auto-fill settings', { exact: true }).click()
     await expect(page).toHaveURL(
       (url) =>
         url.searchParams.get('month') === '2027-01' &&
@@ -46,16 +57,39 @@ test('detail staffing, locking and publication retain the filtered return view',
         url.searchParams.get('view') === 'draft'
     )
     await page.getByRole('button', { name: action, exact: true }).click()
-    if (action === 'Unlock draft')
-      await expect(page.getByRole('button', { name: 'Lock draft', exact: true })).toBeVisible()
-    if (action === 'Lock draft')
-      await expect(page.getByRole('button', { name: 'Unlock draft', exact: true })).toBeVisible()
+    if (action === 'Exclude session from auto-fill')
+      await expect(
+        page.getByRole('button', { name: 'Allow auto-fill', exact: true, includeHidden: true })
+      ).toHaveCount(1)
+    if (action === 'Allow auto-fill')
+      await expect(
+        page.getByRole('button', {
+          name: 'Exclude session from auto-fill',
+          exact: true,
+          includeHidden: true,
+        })
+      ).toHaveCount(1)
   }
   await expect(page.getByText('Status: published', { exact: true })).toBeVisible()
-  await page.getByRole('link', { name: 'Back to 2027-01' }).click()
-  await expect(page).toHaveURL('/admin/workshops?' + context)
+  const returnContext = new URLSearchParams(context)
+  returnContext.set('workshopDefinitionId', workshopDefinitionId)
+  const returnLink = page.getByRole('link', {
+    name: '← Back to Fixture workshop schedule',
+    exact: true,
+  })
+  const returnHref = await returnLink.getAttribute('href')
+  expect(returnHref).not.toBeNull()
+  const returnUrl = new URL(returnHref!, page.url())
+  expect(returnUrl.pathname).toBe('/admin/workshops')
+  expect(Object.fromEntries(returnUrl.searchParams)).toEqual(Object.fromEntries(returnContext))
+  await returnLink.click()
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/admin/workshops' &&
+      [...returnContext].every(([key, value]) => url.searchParams.get(key) === value)
+  )
   await expect(page.getByLabel('School filter')).toHaveValue(f.school.id)
-  await expect(page.getByLabel('Class filter')).toHaveValue(f.cls.id)
+  await expect(page.getByLabel('Teacher filter')).toHaveValue(f.cls.id)
 })
 
 test('rapid filter changes compose while the first navigation is delayed', async ({ page }) => {
@@ -85,7 +119,7 @@ test('rapid filter changes compose while the first navigation is delayed', async
     await page.getByLabel('School filter').selectOption(f.school.id)
     await expect.poll(() => held).toBe(true)
     await page.getByLabel('Month', { exact: true }).fill('2027-02')
-    await page.getByLabel('Class filter').selectOption(f.cls.id)
+    await page.getByLabel('Teacher filter').selectOption(f.cls.id)
     release()
     await expect(page).toHaveURL(
       (url) =>
@@ -94,7 +128,7 @@ test('rapid filter changes compose while the first navigation is delayed', async
         url.searchParams.get('classSectionId') === f.cls.id
     )
     await expect(page.getByLabel('School filter')).toHaveValue(f.school.id)
-    await expect(page.getByLabel('Class filter')).toHaveValue(f.cls.id)
+    await expect(page.getByLabel('Teacher filter')).toHaveValue(f.cls.id)
     await page.getByRole('link', { name: 'Next month' }).click()
     await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-03')
     await expect(page).toHaveURL(

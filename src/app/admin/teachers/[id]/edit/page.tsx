@@ -25,7 +25,18 @@ export default async function EditTeacherPage({
   const { error } = query
   const context = parseSchedulingContext(query)
   const [teacher, schools] = await Promise.all([
-    prisma.user.findFirst({ where: { id, role: 'TEACHER', deletedAt: null } }),
+    prisma.user.findFirst({
+      where: { id, role: 'TEACHER', deletedAt: null },
+      include: {
+        classesTaught: {
+          orderBy: { name: 'asc' },
+          include: {
+            school: true,
+            _count: { select: { classWorkshops: true } },
+          },
+        },
+      },
+    }),
     prisma.school.findMany({ where: { deletedAt: null }, orderBy: { name: 'asc' } }),
   ])
   if (!teacher) notFound()
@@ -41,14 +52,14 @@ export default async function EditTeacherPage({
             href={schedulingHref('/admin/classes', context)}
             className={buttonClasses({ variant: 'secondary' })}
           >
-            Back to classes & teachers
+            Back to teachers
           </Link>
         }
       />
       <FormError message={error} />
       <Panel
         title="Teacher details"
-        description="Changing a teacher’s school may require moving or removing their classes first."
+        description="Edit the contact details. A school change is available until availability or workshop history has been recorded."
         className="max-w-2xl"
       >
         <form action={updateTeacher} className="space-y-5">
@@ -110,6 +121,14 @@ export default async function EditTeacherPage({
             </Link>
           </div>
         </form>
+      </Panel>
+      <Panel
+        title="Availability & workshops"
+        description="Manage this teacher’s weekly availability, exceptions, defaults, and run enrollment."
+      >
+        <Link href={'/admin/teachers/' + teacher.id} className={buttonClasses()}>
+          Open teacher schedule
+        </Link>
       </Panel>
     </main>
   )

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Pencil, UserRoundCheck } from 'lucide-react'
+import { ClipboardCheck, Pencil, UserRoundCheck } from 'lucide-react'
 
 import { FormError } from '@/components/form-error'
 import { SubmitButton } from '@/components/submit-button'
@@ -30,6 +30,11 @@ export default async function PAsPage({
         eyebrow="People"
         title="PAs"
         description="Manage PA access before volunteers request a magic sign-in link."
+        actions={
+          <Link href="/admin/staffing" className={buttonClasses({ variant: 'secondary' })}>
+            <ClipboardCheck className="size-4" aria-hidden="true" /> Availability &amp; workload
+          </Link>
+        }
       />
       <FormError message={error} />
 
@@ -87,7 +92,8 @@ export default async function PAsPage({
                           <StatusBadge status="active" />
                         </td>
                         <td>
-                          <div className="flex justify-end gap-2">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <Link href={`/admin/pas/${pa.id}/availability`} aria-label={`Availability for ${pa.name ?? pa.email}`} className={buttonClasses({variant:"secondary",size:"sm"})}>Availability</Link>
                             <Link
                               href={`/admin/pas/${pa.id}/edit`}
                               aria-label={`Edit ${pa.name ?? pa.email}`}

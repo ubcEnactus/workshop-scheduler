@@ -10,6 +10,7 @@ import {
 } from '@/lib/time'
 
 const valid = {
+  workshopDefinitionId: 'fixture-definition-1',
   classSectionId: 'class',
   date: '2025-03-10',
   startTime: '10:00',

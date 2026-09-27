@@ -4,6 +4,7 @@ import { vancouverDateKey, vancouverMinuteOfDay } from '@/lib/time'
 import type { SchedulingContext } from '@/lib/scheduling/navigation'
 import { SubmitButton } from './submit-button'
 import { Ban, CalendarClock, CheckCircle2, RefreshCw } from 'lucide-react'
+import { scheduleHash } from '@/lib/scheduling/matching-preview'
 function Fields({
   workshop,
   kind,
@@ -58,9 +59,152 @@ export function WorkshopChanges({
       <div>
         <h2 className="text-lg font-semibold text-slate-950">Change workshop</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Review changes before applying. Include a reason for the history.
+          Review and save changes with a short reason.
+          {workshop.status === 'PUBLISHED'
+            ? ' Contact participants separately when their plans change; no email is sent.'
+            : ''}
         </p>
       </div>
+      <details className={optionClass} id="edit-session">
+        <summary className={summaryClass}>
+          <CalendarClock className="size-4 text-blue-600" /> Edit date, PAs and details together
+        </summary>
+        <form
+          action={stageWorkshopChange}
+          className="mt-4 space-y-5 border-t border-slate-100 pt-4"
+        >
+          <input type="hidden" name="inputHash" value={scheduleHash(snapshot)} />
+          <p className="text-sm text-slate-600">
+            Review the final date and PA team together. A removed PA can leave a published session
+            needing replacement staff. PA availability and workload warnings are shown before
+            applying. Date exceptions still need confirmation.
+          </p>
+          <div className="form-grid">
+            <label className="field">
+              Session date
+              <input
+                className="input"
+                type="date"
+                name="date"
+                required
+                defaultValue={vancouverDateKey(workshop.scheduledStart)}
+              />
+            </label>
+            <label className="field">
+              Start time
+              <input
+                className="input"
+                type="time"
+                step={900}
+                name="startTime"
+                required
+                defaultValue={clock(workshop.scheduledStart)}
+              />
+            </label>
+            <label className="field">
+              End time
+              <input
+                className="input"
+                type="time"
+                step={900}
+                name="endTime"
+                required
+                defaultValue={clock(workshop.scheduledEnd)}
+              />
+            </label>
+            <label className="field">
+              Minimum PAs
+              <input
+                className="input"
+                type="number"
+                min={1}
+                name="minPAs"
+                required
+                defaultValue={workshop.minPAs}
+              />
+            </label>
+            <label className="field">
+              Maximum PAs
+              <input
+                className="input"
+                type="number"
+                min={1}
+                name="maxPAs"
+                required
+                defaultValue={workshop.maxPAs}
+              />
+            </label>
+          </div>
+          <fieldset className="space-y-3">
+            <legend className="font-semibold text-slate-900">PA team after this change</legend>
+            <p className="text-sm text-slate-500">
+              Select everyone who should remain assigned. Availability is checked against the new
+              date during review. Missing or partial PA availability and additional daily or weekly
+              assignments are warnings, not blocks.
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {snapshot.pas.map((pa) => (
+                <label
+                  key={pa.id}
+                  className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    name="paIds"
+                    value={pa.id}
+                    defaultChecked={workshop.assignments.some(
+                      (assignment) => assignment.paId === pa.id
+                    )}
+                  />
+                  {pa.name ?? pa.email}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="form-grid">
+            <input type="hidden" name="mode" value="IN_PERSON" />
+            <label className="field">
+              Room, address or meeting link
+              <input
+                name="location"
+                className="input"
+                maxLength={500}
+                defaultValue={workshop.location ?? ''}
+              />
+            </label>
+          </div>
+          <label className="field">
+            Participant instructions
+            <textarea
+              name="participantInstructions"
+              aria-label="Participant instructions"
+              aria-describedby="edit-participant-help"
+              className="input min-h-20"
+              maxLength={5000}
+              defaultValue={workshop.participantInstructions ?? ''}
+            />
+            <span id="edit-participant-help" className="text-xs font-normal text-slate-500">
+              Visible to assigned PAs and the school’s teachers after publication.
+            </span>
+          </label>
+          <label className="field">
+            Internal admin notes
+            <textarea
+              name="notes"
+              aria-label="Internal admin notes"
+              aria-describedby="edit-notes-help"
+              className="input min-h-20"
+              maxLength={5000}
+              defaultValue={workshop.notes ?? ''}
+            />
+            <span id="edit-notes-help" className="text-xs font-normal text-slate-500">
+              Only admins can see these notes.
+            </span>
+          </label>
+          <Fields workshop={workshop} kind="EDIT" context={context} />
+          <SubmitButton>Review full change</SubmitButton>
+        </form>
+      </details>
       {workshop.assignments.length > 0 && (
         <details className={optionClass}>
           <summary className={summaryClass}>
@@ -133,6 +277,7 @@ export function WorkshopChanges({
               <input
                 aria-label="New start time"
                 type="time"
+                step={900}
                 name="startTime"
                 defaultValue={clock(workshop.scheduledStart)}
                 required
@@ -144,6 +289,7 @@ export function WorkshopChanges({
               <input
                 aria-label="New end time"
                 type="time"
+                step={900}
                 name="endTime"
                 defaultValue={clock(workshop.scheduledEnd)}
                 required
@@ -176,6 +322,9 @@ export function WorkshopChanges({
             action={stageWorkshopChange}
             className="mt-4 space-y-3 border-t border-slate-100 pt-4"
           >
+            <p className="text-sm text-slate-600">
+              Completion records that delivery occurred. It does not send a message.
+            </p>
             <Fields workshop={workshop} kind="COMPLETE" context={context} />
             <SubmitButton>Review completion</SubmitButton>
           </form>

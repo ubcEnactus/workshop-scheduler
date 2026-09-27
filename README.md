@@ -10,20 +10,27 @@ Implemented today:
 
 - Invite-only Auth.js magic-link login
 - Admin management of schools, teachers, PAs, classes, and class meeting times
-- Recurring PA availability
+- Effective recurring PA availability and dated exceptions in 15-minute increments
+- Named workshop runs with inclusive shared delivery windows, reviewed bulk enrollment, coverage, and waivers
+- Connected Plan → Staff → Publish workshop workspace, with on-demand creation/enrollment, retained cross-week date choices and explicit workshop/batch/session scopes
 - Read-only PA and teacher dashboards for published work
 - Dated draft workshops: month navigation, school/class filters, create and detail/edit forms
-- Vancouver date/time, hosting-block, staffing and class/teacher overlap validation
-- Monthly class cadence/defaults and selected-class batch planning with safe retries
-- Explicit PA quotas and assignment gaps; manual staffing, locking and publication
-- Automatic staffing previews with protected work and stale-input detection
-- Reviewed replacement, rescheduling, cancellation/completion and audit history
+- Date-first booking with inline school/teacher entry, optional class labels, a booking summary, and a direct handoff to staffing
+- Class calendars show dated availability and booked sessions; workshop cards select times inside their shared delivery windows
+- Vancouver date/time, candidate-window, staffing and class/teacher overlap validation
+- Run-first date planning from activated weekly class blocks, closures, exceptions and scoped dated availability
+- Automatic daily and Monday–Friday weekly limits, lifetime workload fairness, warning-only manual choices, explicit auto-fill exclusions and separate publication
+- Immediate private draft staffing, additive minimum-only auto-fill, durable retries and safe Undo; existing teams and dates remain unchanged
+- Atomic reviewed date, PA and detail edits, cancellation/completion, history, and communication tasks
+- Effective teacher handovers and class archive/reactivation with historical context
 - Availability review warnings and published history in PA/teacher views
 - Isolated PostgreSQL integration tests and Playwright browser coverage
 
-The cycle schema has been removed through a committed migration. Workshops have required UTC start/end instants and draft/published/completed/cancelled lifecycle states. Assignments are draft or published. Iterations 0–5 are implemented; the local pilot rehearsal is covered. Hosted staging, real email delivery and database recovery checks remain pending. See [the pilot runbook](docs/PILOT_RUNBOOK.md) for workflow, recovery and release checks. See [the implementation plan](docs/IMPLEMENTATION_PLAN.md) for completed work and the remaining iterations.
+Class sessions have required UTC start/end instants and draft/published/completed/cancelled lifecycle states. A named workshop defines its shared window and included classes; calendar months do not generate obligations. Monthly PA quotas are no longer prerequisites. See [the workspace review](docs/WORKSHOP_WORKSPACE_REVIEW.md) for current implementation and verification, [the workspace plan](docs/WORKSHOP_WORKSPACE_PLAN.md) for acceptance criteria, [the earlier implementation review](docs/IMPLEMENTATION_REVIEW.md) for domain history, and [the pilot runbook](docs/PILOT_RUNBOOK.md) for recovery and production release gates.
 
 ## Local setup
+
+See [the class-workshop refactor](docs/CLASS_WORKSHOPS.md) for the current domain, candidate-date workflow, and data-preserving migration. Assignments use one PA type; there is no separate manager assignment role.
 
 Use Node.js 20.19 or newer. The repository includes `.nvmrc`.
 
@@ -112,4 +119,4 @@ Each integration/browser command starts its own PostgreSQL cluster with random c
 
 Browser tests run the real development app and consume the existing console-delivered magic links from their private server log. There is no testing login route or production authentication bypass. Run the browser suite separately from `next dev` or `next build` in this checkout because they share `.next`. Use a normal non-root OS account for embedded PostgreSQL.
 
-The `dated_workshops` migration deliberately deletes disposable legacy assignments and workshops before removing their obsolete statuses. Apply it only to disposable development/test data at this stage. Committed migration history is preserved; no legacy backfill is implemented.
+The historical `dated_workshops` migration deliberately deletes disposable cycle-era assignments and workshops before removing their obsolete statuses. Apply that historical migration only to disposable development/test data. The later `class_workshop_sessions` migration preserves the current dated records with an explicit backfill; see [migration details and verification](docs/CLASS_WORKSHOPS.md).

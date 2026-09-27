@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assessAssignment,
+  assignmentPolicyHash,
   eligibility,
-  workload,
+  manualAssignmentDecision,
+  totalAssignments,
   type ScheduleSnapshot,
   type ScheduledWorkshop,
 } from '../eligibility'
 import { vancouverToUtc } from '@/lib/time'
 
-function workshop(id: string, date = '2025-03-31', start = 600, end = 660): ScheduledWorkshop {
+function workshop(id: string, date = '2027-01-04', start = 600, end = 660): ScheduledWorkshop {
   return {
     id,
     classSectionId: id,
@@ -23,166 +26,320 @@ function workshop(id: string, date = '2025-03-31', start = 600, end = 660): Sche
     assignments: [],
   }
 }
+
 function snapshot(): ScheduleSnapshot {
   return {
-    minimumGapDays: 1,
+    minimumGapDays: null,
     pas: [{ id: 'pa', name: 'PA', email: 'pa@test.local' }],
-    availability: [0, 1].flatMap((dayOfWeek) =>
-      Array.from({ length: 13 }, (_, i) => ({ userId: 'pa', dayOfWeek, startMin: 510 + 30 * i }))
+    availability: [0, 1, 2, 3, 4].flatMap((dayOfWeek) =>
+      Array.from({ length: 28 }, (_, index) => ({
+        userId: 'pa',
+        dayOfWeek,
+        startMin: 510 + 15 * index,
+        effectiveFrom: '2020-01-01',
+      }))
     ),
-    quotas: [
-      { paId: 'pa', month: '2025-03', quota: 2 },
-      { paId: 'pa', month: '2025-04', quota: 2 },
-    ],
+    quotas: [],
     workshops: [],
   }
 }
-describe('shared staffing eligibility', () => {
-  it('requires explicit quota and gap and full-duration availability', () => {
-    const s = snapshot(),
-      w = workshop('one')
-    expect(eligibility(s, w, 'pa')).toEqual([])
-    s.quotas = []
-    expect(eligibility(s, w, 'pa')).toContain('Monthly quota is missing.')
-    s.minimumGapDays = null
-    expect(eligibility(s, w, 'pa')).toContain(
-      'Set a minimum assignment gap of 1 to 365 whole days.'
-    )
-    s.availability = s.availability.filter((a) => a.startMin !== 630)
-    expect(eligibility(s, w, 'pa')).toContain('Availability does not cover the full workshop.')
+
+const assignment = (paId = 'pa') => ({
+  paId,
+  status: 'DRAFT' as const,
+  source: 'MANUAL' as const,
+})
+
+describe('shared staffing assessment', () => {
+  it('does not require a quota or legacy rolling-day gap', () => {
+    const state = snapshot()
+    state.minimumGapDays = null
+    state.quotas = []
+    expect(assessAssignment(state, workshop('target'), 'pa')).toMatchObject({
+      hardErrors: [],
+      manualWarnings: [],
+      manualEligible: true,
+      automaticEligible: true,
+      totalAssignments: 0,
+    })
   })
-  it('counts completed commitments across classes but excludes cancelled and current work', () => {
-    const s = snapshot(),
-      w = workshop('one'),
-      other = workshop('other', '2025-03-03')
-    w.assignments = [{ paId: 'pa', status: 'DRAFT', source: 'MANUAL' }]
-    other.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-    other.status = 'COMPLETED'
-    s.workshops = [w, other]
-    expect(workload(s, 'pa', '2025-03')).toBe(2)
-    expect(eligibility(s, w, 'pa')).toEqual([])
-    s.quotas[0].quota = 1
-    expect(eligibility(s, w, 'pa')).toContain('Monthly quota reached.')
-    other.status = 'CANCELLED'
-    expect(eligibility(s, w, 'pa')).toEqual([])
-    s.quotas[0].quota = 0
-    expect(eligibility(s, w, 'pa')).toContain('Monthly quota reached.')
-  })
-  it('rejects same-school repeats across classes even when their times do not overlap', () => {
-    const s = snapshot(),
-      w = workshop('one'),
-      next = workshop('next', '2025-03-31', 690, 750)
-    next.assignments = [{ paId: 'pa', status: 'DRAFT', source: 'MANUAL' }]
-    s.workshops = [w, next]
-    expect(eligibility(s, w, 'pa')).toContain(
-      'PA already has a workshop at this school on this Vancouver date.'
-    )
-    expect(eligibility(s, w, 'pa')).toContain('Insufficient gap between assignments.')
-    next.scheduledStart = vancouverToUtc('2025-03-31', 720)
-    expect(eligibility(s, w, 'pa')).toContain('Insufficient gap between assignments.')
-    next.scheduledStart = vancouverToUtc('2025-03-31', 630)
-    expect(eligibility(s, w, 'pa')).toContain('Conflicting assignment.')
-    const april = workshop('april', '2025-04-01')
-    w.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-    s.workshops = [w]
-    expect(eligibility(s, april, 'pa')).toEqual([])
-    s.minimumGapDays = 2
-    expect(eligibility(s, april, 'pa')).toContain('Insufficient gap between assignments.')
-  })
+
   it.each([
-    ['2025-03-07', '2025-03-10', 3],
-    ['2025-10-31', '2025-11-03', 3],
-    ['2025-12-31', '2026-01-01', 1],
-    ['2024-02-28', '2024-03-01', 2],
-  ])('uses calendar days across DST and boundaries: %s to %s', (first, second, days) => {
-    const s = snapshot()
-    const earlier = workshop('earlier', first, 840, 900)
-    const later = workshop('later', second, 540, 600)
-    s.minimumGapDays = days
-    s.availability = [0, 1, 2, 3, 4].flatMap((dayOfWeek) =>
-      Array.from({ length: 48 }, (_, i) => ({ userId: 'pa', dayOfWeek, startMin: i * 30 }))
-    )
-    s.quotas = [...new Set([first.slice(0, 7), second.slice(0, 7)])].map((month) => ({
-      paId: 'pa',
-      month,
-      quota: 10,
-    }))
-    earlier.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-    s.workshops = [earlier]
-    expect(eligibility(s, later, 'pa')).toEqual([])
-    s.minimumGapDays = days + 1
-    expect(eligibility(s, later, 'pa')).toContain('Insufficient gap between assignments.')
-    earlier.assignments = []
-    later.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-    s.workshops = [later]
-    expect(eligibility(s, earlier, 'pa')).toContain('Insufficient gap between assignments.')
-    s.minimumGapDays = days
-    expect(eligibility(s, earlier, 'pa')).toEqual([])
-  })
-  it('uses Vancouver dates even when UTC dates differ and distinguishes other schools and PAs', () => {
-    const s = snapshot()
-    const w = workshop('one', '2025-03-31', 1020, 1080)
-    const other = workshop('other', '2025-03-31', 900, 960)
-    other.assignments = [{ paId: 'pa', status: 'DRAFT', source: 'MANUAL' }]
-    s.workshops = [other]
-    expect(w.scheduledStart.toISOString().slice(0, 10)).not.toBe(
-      other.scheduledStart.toISOString().slice(0, 10)
-    )
-    const reason = 'PA already has a workshop at this school on this Vancouver date.'
-    expect(eligibility(s, w, 'pa')).toContain(reason)
-    other.schoolId = 'another-school'
-    expect(eligibility(s, w, 'pa')).not.toContain(reason)
-    expect(eligibility(s, w, 'pa')).toContain('Insufficient gap between assignments.')
-    other.schoolId = w.schoolId
-    other.assignments[0].paId = 'another-pa'
-    expect(eligibility(s, w, 'pa')).not.toContain(reason)
-    expect(eligibility(s, w, 'pa')).not.toContain('Insufficient gap between assignments.')
-  })
-  it('allows adjacent Vancouver dates that share one UTC date', () => {
-    const s = snapshot()
-    const earlier = workshop('earlier', '2025-03-31', 1380, 1410)
-    const later = workshop('later', '2025-04-01', 0, 30)
-    earlier.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-    s.workshops = [earlier]
-    s.availability = [0, 1].flatMap((dayOfWeek) =>
-      Array.from({ length: 48 }, (_, i) => ({ userId: 'pa', dayOfWeek, startMin: i * 30 }))
-    )
-    expect(earlier.scheduledStart.toISOString().slice(0, 10)).toBe(
-      later.scheduledStart.toISOString().slice(0, 10)
-    )
-    expect(eligibility(s, later, 'pa')).toEqual([])
-  })
-  it.each(['DRAFT', 'PUBLISHED', 'COMPLETED', 'CANCELLED'] as const)(
-    'handles a %s same-day commitment and excludes the current workshop',
-    (status) => {
-      const s = snapshot(),
-        w = workshop('one'),
-        other = workshop('other', '2025-03-31', 720, 780)
-      w.assignments = [{ paId: 'pa', status: 'DRAFT', source: 'MANUAL' }]
-      other.assignments = [{ paId: 'pa', status: 'PUBLISHED', source: 'MANUAL' }]
-      other.status = status
-      s.quotas[0].quota = 10
-      s.workshops = [w, other]
-      const reason = 'PA already has a workshop at this school on this Vancouver date.'
-      if (status === 'CANCELLED') expect(eligibility(s, w, 'pa')).toEqual([])
-      else expect(eligibility(s, w, 'pa')).toContain(reason)
-      s.workshops = [w]
-      expect(eligibility(s, w, 'pa')).toEqual([])
+    { availability: 'missing', message: 'Availability is missing.' },
+    { availability: 'partial', message: 'Availability does not cover the full workshop.' },
+  ])(
+    'warns about $availability availability without blocking an admin choice',
+    ({ availability, message }) => {
+      const state = snapshot()
+      const target = workshop('target')
+      state.availability =
+        availability === 'missing' ? [] : state.availability.filter((slot) => slot.startMin !== 630)
+      const assessment = assessAssignment(state, target, 'pa')
+      expect(assessment).toMatchObject({
+        hardErrors: [],
+        availabilityWarnings: [message],
+        manualWarnings: [],
+        manualEligible: true,
+        automaticEligible: false,
+      })
+      expect(
+        manualAssignmentDecision(state, target, 'pa', {
+          expectedPolicyHash: assignmentPolicyHash(target, 'pa', assessment),
+        })
+      ).toMatchObject({
+        ok: true,
+        overrideAvailability: true,
+        overrideSameDay: false,
+        overrideWeek: false,
+        overrideReason: null,
+      })
     }
   )
-  it.each([null, 0, -1, 1.5, 366, Number.NaN])('rejects invalid gap configuration %s', (gap) => {
-    const s = snapshot()
-    s.minimumGapDays = gap
-    expect(eligibility(s, workshop('one'), 'pa')).toContain(
-      'Set a minimum assignment gap of 1 to 365 whole days.'
-    )
+
+  it('still hard-blocks an overlapping assignment when availability is also missing', () => {
+    const state = snapshot()
+    const target = workshop('target')
+    state.availability = []
+    const overlap = workshop('overlap', '2027-01-04', 630, 690)
+    overlap.schoolId = 'another-school'
+    overlap.assignments = [assignment()]
+    state.workshops = [overlap]
+    const assessment = assessAssignment(state, target, 'pa')
+    expect(assessment.hardErrors).toContain('Conflicting assignment.')
+    expect(assessment.availabilityWarnings).toEqual(['Availability is missing.'])
+    expect(assessment.manualEligible).toBe(false)
+    expect(
+      manualAssignmentDecision(state, target, 'pa', {
+        expectedPolicyHash: assignmentPolicyHash(target, 'pa', assessment),
+        overrideReason: 'Cannot bypass a hard conflict',
+      })
+    ).toMatchObject({ ok: false, reasons: expect.arrayContaining(['Conflicting assignment.']) })
   })
-  it('rejects inactive PAs and staffing above capacity', () => {
-    const s = snapshot(),
-      w = workshop('one')
-    w.maxPAs = 1
-    w.assignments = [{ paId: 'other', status: 'DRAFT', source: 'MANUAL' }]
-    expect(eligibility(s, w, 'pa')).toContain('Staffing capacity reached.')
-    expect(eligibility(s, w, 'removed')).toContain('PA account is inactive.')
+
+  it('does not record an availability exception when coverage is complete', () => {
+    const state = snapshot()
+    const target = workshop('target')
+    const assessment = assessAssignment(state, target, 'pa')
+    expect(assessment.availabilityWarnings).toEqual([])
+    expect(
+      manualAssignmentDecision(state, target, 'pa', {
+        expectedPolicyHash: assignmentPolicyHash(target, 'pa', assessment),
+      })
+    ).toMatchObject({ ok: true, overrideAvailability: false })
+  })
+
+  it('only honors an explicitly saved availability exception, without hiding the warning', () => {
+    const state = snapshot()
+    state.availability = []
+    const target = workshop('target')
+    target.assignments = [assignment()]
+    state.workshops = [target]
+    expect(eligibility(state, target, 'pa')).toEqual(['Availability is missing.'])
+    target.assignments[0].overrideAvailability = true
+    expect(eligibility(state, target, 'pa')).toEqual([])
+    expect(assessAssignment(state, target, 'pa')).toMatchObject({
+      availabilityWarnings: ['Availability is missing.'],
+      automaticEligible: false,
+    })
+    state.pas = []
+    expect(eligibility(state, target, 'pa')).toContain('PA account is inactive.')
+  })
+
+  it('requires a fresh policy hash when coverage changes into a warning', () => {
+    const state = snapshot()
+    const target = workshop('target')
+    const expectedPolicyHash = assignmentPolicyHash(
+      target,
+      'pa',
+      assessAssignment(state, target, 'pa')
+    )
+    state.availability = []
+    const assessment = assessAssignment(state, target, 'pa')
+    expect(assignmentPolicyHash(target, 'pa', assessment)).not.toBe(expectedPolicyHash)
+    expect(
+      manualAssignmentDecision(state, target, 'pa', {
+        expectedPolicyHash,
+      })
+    ).toMatchObject({ ok: false })
+  })
+
+  it('records a same-day workload choice without confirmation or reason and revalidates its hash', () => {
+    const state = snapshot()
+    const target = workshop('target', '2027-01-04', 600, 660)
+    const later = workshop('later', '2027-01-04', 720, 780)
+    later.schoolId = 'another-school'
+    later.assignments = [assignment()]
+    state.workshops = [later]
+
+    const assessment = assessAssignment(state, target, 'pa')
+    expect(assessment).toMatchObject({
+      hardErrors: [],
+      manualEligible: true,
+      automaticEligible: false,
+    })
+    expect(assessment.manualWarnings.map((warning) => warning.code)).toEqual([
+      'SAME_DAY',
+      'SAME_WEEK',
+    ])
+    expect(assessment.manualWarnings[0].commitments[0].minutesBetween).toBe(60)
+
+    const expectedPolicyHash = assignmentPolicyHash(target, 'pa', assessment)
+    expect(
+      manualAssignmentDecision(state, target, 'pa', {
+        expectedPolicyHash,
+      })
+    ).toMatchObject({ ok: true, overrideSameDay: true, overrideWeek: true, overrideReason: null })
+    expect(
+      manualAssignmentDecision(state, target, 'pa', {
+        expectedPolicyHash: 'stale',
+      })
+    ).toMatchObject({ ok: false })
+  })
+
+  it('keeps consecutive same-school sessions as a separate hard block', () => {
+    const state = snapshot()
+    state.availability = []
+    const target = workshop('target', '2027-01-04', 600, 660)
+    const next = workshop('next', '2027-01-04', 660, 720)
+    next.assignments = [assignment()]
+    state.workshops = [next]
+    const assessment = assessAssignment(state, target, 'pa')
+    expect(assessment.hardErrors).toContain(
+      'PA cannot teach consecutive sessions at the same school.'
+    )
+    expect(assessment.manualWarnings.map((warning) => warning.code)).toContain('SAME_DAY')
+  })
+
+  it.each([
+    { date: '2027-01-04', sameDay: true },
+    { date: '2027-01-05', sameDay: false },
+  ])(
+    'records workload and availability warnings without confirmations or a reason ($date)',
+    ({ date, sameDay }) => {
+      const state = snapshot()
+      state.availability = []
+      const target = workshop('target')
+      const existing = workshop('existing', date, 720, 780)
+      existing.schoolId = 'another-school'
+      existing.assignments = [assignment()]
+      state.workshops = [existing]
+      const assessment = assessAssignment(state, target, 'pa')
+      const input = {
+        expectedPolicyHash: assignmentPolicyHash(target, 'pa', assessment),
+      }
+      expect(manualAssignmentDecision(state, target, 'pa', input)).toMatchObject({
+        ok: true,
+        overrideAvailability: true,
+        overrideSameDay: sameDay,
+        overrideWeek: true,
+        overrideReason: null,
+      })
+      expect(assessment.automaticEligible).toBe(false)
+    }
+  )
+
+  it('uses Monday–Friday Vancouver weeks and resets on the following Monday', () => {
+    const state = snapshot()
+    const monday = workshop('monday', '2027-01-04')
+    const friday = workshop('friday', '2027-01-08')
+    monday.assignments = [assignment()]
+    state.workshops = [monday]
+    expect(
+      assessAssignment(state, friday, 'pa').manualWarnings.map((warning) => warning.code)
+    ).toEqual(['SAME_WEEK'])
+
+    const nextMonday = workshop('next-monday', '2027-01-11')
+    expect(assessAssignment(state, nextMonday, 'pa').automaticEligible).toBe(true)
+  })
+
+  it('honors a saved workload exception for publication without making it automatic eligibility', () => {
+    const state = snapshot()
+    const existing = workshop('existing', '2027-01-04', 720, 780)
+    existing.schoolId = 'another-school'
+    existing.assignments = [assignment()]
+    const target = workshop('target')
+    target.assignments = [
+      {
+        ...assignment(),
+        overrideSameDay: true,
+        overrideWeek: true,
+        overrideReason: 'Reviewed by an admin.',
+      },
+    ]
+    state.workshops = [existing, target]
+    expect(eligibility(state, target, 'pa')).toEqual([])
+    expect(assessAssignment(state, target, 'pa').automaticEligible).toBe(false)
+    expect(eligibility(state, existing, 'pa')).toEqual([])
+  })
+
+  it('does not grandfather old manual assignments with unapproved workload warnings', () => {
+    const state = snapshot()
+    const existing = workshop('existing', '2027-01-04', 720, 780)
+    existing.schoolId = 'another-school'
+    existing.assignments = [assignment()]
+    const target = workshop('target')
+    target.assignments = [assignment()]
+    state.workshops = [existing, target]
+    expect(eligibility(state, target, 'pa')).toEqual([
+      'Already assigned another session on this day.',
+      'Already assigned another session in this Monday–Friday week.',
+    ])
+  })
+
+  it('invalidates a reviewed policy hash when travel context changes', () => {
+    const state = snapshot()
+    const target = workshop('target')
+    const other = workshop('other', '2027-01-04', 720, 780)
+    other.assignments = [assignment()]
+    other.schoolName = 'First school'
+    other.location = 'Room 101'
+    state.workshops = [other]
+    const before = assessAssignment(state, target, 'pa')
+    const beforeHash = assignmentPolicyHash(target, 'pa', before)
+    other.location = 'Remote campus'
+    const after = assessAssignment(state, target, 'pa')
+    expect(assignmentPolicyHash(target, 'pa', after)).not.toBe(beforeHash)
+  })
+
+  it('counts all active assignment records for fairness and excludes cancelled sessions', () => {
+    const state = snapshot()
+    const completed = workshop('completed', '2026-11-02')
+    completed.status = 'COMPLETED'
+    completed.assignments = [assignment()]
+    const cancelled = workshop('cancelled', '2026-12-07')
+    cancelled.status = 'CANCELLED'
+    cancelled.assignments = [assignment()]
+    state.workshops = [completed, cancelled]
+    expect(totalAssignments(state, 'pa')).toBe(1)
+  })
+
+  it('applies bounded-preview deltas to the lifetime assignment aggregate', () => {
+    const state = snapshot()
+    const existing = workshop('existing')
+    existing.assignments = [assignment()]
+    state.workshops = [existing]
+    state.assignmentTotals = { pa: 12 }
+    state.baselineAssignmentKeys = ['existing:pa']
+
+    expect(totalAssignments(state, 'pa')).toBe(12)
+    existing.assignments = []
+    expect(totalAssignments(state, 'pa')).toBe(11)
+
+    const proposed = workshop('proposed')
+    proposed.assignments = [assignment()]
+    state.workshops.push(proposed)
+    expect(totalAssignments(state, 'pa')).toBe(12)
+    expect(totalAssignments(state, 'pa', proposed.id)).toBe(11)
+  })
+
+  it('applies dated availability exceptions without changing recurring rows', () => {
+    const state = snapshot()
+    const target = workshop('target')
+    state.availabilityExceptions = [
+      { userId: 'pa', date: '2027-01-04', kind: 'UNAVAILABLE', startMinute: 630, endMinute: 645 },
+    ]
+    expect(assessAssignment(state, target, 'pa').availabilityWarnings).toContain(
+      'Availability does not cover the full workshop.'
+    )
   })
 })

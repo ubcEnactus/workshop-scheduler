@@ -1,9 +1,11 @@
+import { addSessionCandidateFixture } from '../fixtures'
+import { createSessionFixture } from '../fixtures'
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { prisma } from '../../src/lib/db'
 import { loadSchedule } from '../../src/lib/scheduling/store'
 import { vancouverToUtc } from '../../src/lib/time'
-import { form, resetFixtures, workshopForm } from '../fixtures'
+import { form, resetFixtures, staffingForm, workshopForm } from '../fixtures'
 
 const { sessionAuth } = vi.hoisted(() => ({ sessionAuth: vi.fn() }))
 vi.mock('next-auth', () => ({ default: () => ({ auth: sessionAuth }) }))
@@ -22,10 +24,12 @@ import {
   stageWorkshopChange,
 } from '../../src/app/admin/workshops/changes/actions'
 
+let bookingNumber = 0
 let f: Awaited<ReturnType<typeof resetFixtures>>
 
 beforeEach(async () => {
   f = await resetFixtures()
+  bookingNumber = 0
   sessionAuth.mockResolvedValue({ user: { id: f.admin.id } })
 })
 
@@ -36,9 +40,9 @@ afterAll(async () => {
 function booking(overrides: Record<string, string | number> = {}) {
   return form({
     requestKey: randomUUID(),
+    workshopDefinitionId: `fixture-definition-${++bookingNumber}`,
     schoolChoice: f.school.id,
     schoolName: '',
-    schoolDistrict: '',
     teacherChoice: f.teacher.id,
     teacherName: '',
     teacherEmail: '',
@@ -59,10 +63,39 @@ async function create(data: FormData) {
   await expect(createWorkshopBooking({}, data)).rejects.toThrow(
     /REDIRECT:\/admin\/workshops\/.*month=.*schoolId=.*classSectionId=.*saved=1/
   )
-  return prisma.workshop.findFirstOrThrow({ orderBy: { createdAt: 'desc' } })
+  return prisma.workshopSession.findFirstOrThrow({
+    orderBy: { createdAt: 'desc' },
+    include: { classWorkshop: true },
+  })
 }
 
 describe('direct workshop booking', () => {
+  it('books without a class label and reuses the same teacher’s workshop group', async () => {
+    const first = await create(booking({ classChoice: '__new__', className: '' }))
+    const second = await create(
+      booking({ classChoice: '__new__', className: '   ', date: '2027-01-07' })
+    )
+    expect(second.classWorkshop.classSectionId).toBe(first.classWorkshop.classSectionId)
+    const group = await prisma.classSection.findUniqueOrThrow({
+      where: { id: first.classWorkshop.classSectionId },
+      include: { meetings: true },
+    })
+    expect(group).toMatchObject({
+      name: f.cls.name,
+      teacherId: f.teacher.id,
+      schoolId: f.school.id,
+    })
+    expect(group.meetings).toHaveLength(f.cls.meetings.length)
+    const other = await create(
+      booking({
+        classChoice: '__new__',
+        schoolChoice: f.otherSchool.id,
+        teacherChoice: f.otherTeacher.id,
+      })
+    )
+    expect(other.classWorkshop.classSectionId).not.toBe(first.classWorkshop.classSectionId)
+  })
+
   it('authorizes before parsing', async () => {
     sessionAuth.mockResolvedValue({ user: { id: f.teacher.id } })
     await expect(createWorkshopBooking({}, new FormData())).rejects.toThrow('REDIRECT:/403')
@@ -77,7 +110,6 @@ describe('direct workshop booking', () => {
       booking({
         schoolChoice: '__new__',
         schoolName: 'Cedar School',
-        schoolDistrict: '',
         teacherChoice: '__new__',
         teacherName: 'Alex Teacher',
         teacherEmail: 'ALEX@example.test',
@@ -86,10 +118,10 @@ describe('direct workshop booking', () => {
       })
     )
     const cls = await prisma.classSection.findUniqueOrThrow({
-      where: { id: workshop.classSectionId },
+      where: { id: workshop.classWorkshop.classSectionId },
       include: { school: true, teacher: true, meetings: true },
     })
-    expect(cls.school).toMatchObject({ name: 'Cedar School', district: '' })
+    expect(cls.school).toMatchObject({ name: 'Cedar School' })
     expect(cls.teacher).toMatchObject({
       name: 'Alex Teacher',
       email: 'alex@example.test',
@@ -111,7 +143,6 @@ describe('direct workshop booking', () => {
       booking({
         schoolChoice: '__new__',
         schoolName: '  New   School ',
-        schoolDistrict: ' North ',
         teacherChoice: '__new__',
         teacherName: 'First Name',
         teacherEmail: 'same@example.test',
@@ -123,7 +154,6 @@ describe('direct workshop booking', () => {
       booking({
         schoolChoice: '__new__',
         schoolName: 'new school',
-        schoolDistrict: 'north',
         teacherChoice: '__new__',
         teacherName: 'Ignored Rename',
         teacherEmail: 'SAME@example.test',
@@ -137,19 +167,21 @@ describe('direct workshop booking', () => {
     expect(teacher.name).toBe('First Name')
     expect(await prisma.classSection.count({ where: { teacherId: teacher.id } })).toBe(1)
     expect(
-      await prisma.workshop.count({ where: { classSection: { teacherId: teacher.id } } })
+      await prisma.workshopSession.count({
+        where: { classWorkshop: { classSection: { teacherId: teacher.id } } },
+      })
     ).toBe(2)
   })
 
   it('infers an existing class relationship and rejects inconsistent selections', async () => {
     const created = await create(booking())
-    expect(created.classSectionId).toBe(f.cls.id)
+    expect(created.classWorkshop.classSectionId).toBe(f.cls.id)
     const result = await createWorkshopBooking(
       {},
       booking({ schoolChoice: f.otherSchool.id, date: '2027-01-07' })
     )
     expect(result.error).toMatch(/no longer match/i)
-    expect(await prisma.workshop.count()).toBe(1)
+    expect(await prisma.workshopSession.count()).toBe(1)
   })
 
   it('rejects foreign, deleted, wrong-role, and colliding email relationships', async () => {
@@ -196,27 +228,25 @@ describe('direct workshop booking', () => {
       )
       expect(result.error).toMatch(/another or inactive account/i)
     }
-    expect(await prisma.workshop.count()).toBe(0)
+    expect(await prisma.workshopSession.count()).toBe(0)
   })
 
-  it('rolls back a newly created class when teacher overlap validation fails', async () => {
+  it('reuses the teacher profile when a stale client supplies another class label', async () => {
     await create(booking({ date: '2027-01-04' }))
-    const result = await createWorkshopBooking(
-      {},
-      booking({ classChoice: '__new__', className: 'Rollback class', date: '2027-01-04' })
+    await create(
+      booking({ classChoice: '__new__', className: 'Concurrent class', date: '2027-01-04' })
     )
-    expect(result.error).toMatch(/overlapping workshop/i)
-    expect(await prisma.classSection.count({ where: { name: 'Rollback class' } })).toBe(0)
-    expect(await prisma.workshop.count()).toBe(1)
-    expect(await prisma.workshopBatch.count()).toBe(1)
+    expect(await prisma.classSection.count({ where: { name: 'Concurrent class' } })).toBe(0)
+    expect(await prisma.classSection.count({ where: { teacherId: f.teacher.id } })).toBe(1)
+    expect(await prisma.workshopSession.count()).toBe(2)
+    expect(await prisma.workshopBatch.count()).toBe(2)
   })
 
-  it('blocks overlaps across a teacher while permitting other teachers', async () => {
+  it('permits overlapping bookings with shared or different teachers', async () => {
     await create(booking({ date: '2027-01-04' }))
-    expect(
-      (await createWorkshopBooking({}, booking({ classChoice: f.sibling.id, date: '2027-01-04' })))
-        .error
-    ).toMatch(/overlapping workshop/i)
+    await create(
+      booking({ classChoice: f.sibling.id, teacherChoice: f.siblingTeacher.id, date: '2027-01-04' })
+    )
     await create(
       booking({
         schoolChoice: f.otherSchool.id,
@@ -226,7 +256,7 @@ describe('direct workshop booking', () => {
         date: '2027-01-04',
       })
     )
-    expect(await prisma.workshop.count()).toBe(2)
+    expect(await prisma.workshopSession.count()).toBe(3)
   })
 
   it('is idempotent for concurrent retries and rejects changed payloads or actors', async () => {
@@ -238,11 +268,11 @@ describe('direct workshop booking', () => {
     ])
     for (const result of results)
       expect(result.status === 'rejected' && result.reason.message).toMatch(/saved=1/)
-    expect(await prisma.workshop.count()).toBe(1)
+    expect(await prisma.workshopSession.count()).toBe(1)
     expect(await prisma.workshopBatch.count()).toBe(1)
 
-    const booked = await prisma.workshop.findFirstOrThrow()
-    await prisma.workshop.update({
+    const booked = await prisma.workshopSession.findFirstOrThrow()
+    await prisma.workshopSession.update({
       where: { id: booked.id },
       data: {
         scheduledStart: new Date('2027-02-03T18:00:00.000Z'),
@@ -263,7 +293,7 @@ describe('direct workshop booking', () => {
     sessionAuth.mockResolvedValue({ user: { id: otherAdmin.id } })
     const otherActor = await createWorkshopBooking({}, booking({ requestKey }))
     expect(otherActor.error).toMatch(/different workshop choices/i)
-    expect(await prisma.workshop.count()).toBe(1)
+    expect(await prisma.workshopSession.count()).toBe(1)
   })
 
   it('preserves occurrence confirmation when direct workshops are edited or rescheduled', async () => {
@@ -273,6 +303,7 @@ describe('direct workshop booking', () => {
       true
     )
 
+    await addSessionCandidateFixture(direct.id, '2027-01-07', 780, 840)
     await expect(
       updateWorkshopForm(
         {},
@@ -286,7 +317,8 @@ describe('direct workshop booking', () => {
       )
     ).rejects.toThrow(/saved=1/)
     expect(
-      (await prisma.workshop.findUniqueOrThrow({ where: { id: direct.id } })).hostingConfirmed
+      (await prisma.workshopSession.findUniqueOrThrow({ where: { id: direct.id } }))
+        .hostingConfirmed
     ).toBe(true)
     expect(
       (
@@ -301,12 +333,17 @@ describe('direct workshop booking', () => {
           })
         )
       ).error
-    ).toMatch(/hosting block/i)
+    ).toMatch(/availability|Enroll this teacher|already has/i)
     expect(
-      (await prisma.workshop.findUniqueOrThrow({ where: { id: direct.id } })).classSectionId
+      (
+        await prisma.workshopSession.findUniqueOrThrow({
+          where: { id: direct.id },
+          include: { classWorkshop: true },
+        })
+      ).classWorkshop.classSectionId
     ).toBe(f.cls.id)
 
-    const legacy = await prisma.workshop.create({
+    const legacy = await createSessionFixture({
       data: {
         classSectionId: f.cls.id,
         scheduledStart: new Date('2027-01-08T18:00:00.000Z'),
@@ -326,7 +363,7 @@ describe('direct workshop booking', () => {
           })
         )
       ).error
-    ).toMatch(/hosting block/i)
+    ).toMatch(/availability|Enroll this teacher|already has/i)
   })
 
   it('revalidates assigned PA constraints while rescheduling a published direct booking', async () => {
@@ -339,13 +376,11 @@ describe('direct workshop booking', () => {
       data: { paId: f.pa.id, month: '2027-01', quota: 2 },
     })
     await prisma.availability.createMany({
-      data: [600, 630].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 2, startMin })),
+      data: [600, 615, 630, 645].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 2, startMin })),
     })
 
     const direct = await create(booking())
-    await expect(assignPA(form({ id: direct.id, version: 0, paId: f.pa.id }))).rejects.toThrow(
-      /staffed=1/
-    )
+    await expect(assignPA(await staffingForm(direct.id, 0, f.pa.id))).rejects.toThrow(/staffed=1/)
     await expect(publishWorkshop(form({ id: direct.id, version: 1 }))).rejects.toThrow(
       /published=1/
     )
@@ -363,26 +398,38 @@ describe('direct workshop booking', () => {
       endTime: '14:00',
       reason: 'Host confirmed a new time.',
     }
-    await expect(stageWorkshopChange(form(move))).rejects.toThrow(/Availability/)
+    await addSessionCandidateFixture(direct.id, move.date, 780, 840)
+    await expect(stageWorkshopChange(form(move))).rejects.toThrow(
+      /REDIRECT:\/admin\/workshops\/changes\//
+    )
+    expect(
+      (await prisma.workshopSession.findUniqueOrThrow({ where: { id: direct.id } })).scheduledStart
+    ).toEqual(direct.scheduledStart)
 
     await prisma.availability.createMany({
-      data: [780, 810].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 3, startMin })),
+      data: [780, 795, 810, 825].map((startMin) => ({
+        userId: f.pa.id,
+        dayOfWeek: 3,
+        startMin,
+      })),
     })
-    const conflict = await prisma.workshop.create({
+    const conflict = await createSessionFixture({
       data: {
         classSectionId: f.sibling.id,
         scheduledStart: vancouverToUtc(move.date, 780),
         scheduledEnd: vancouverToUtc(move.date, 840),
       },
     })
-    await expect(stageWorkshopChange(form(move))).rejects.toThrow(/overlapping/)
-    await prisma.workshop.delete({ where: { id: conflict.id } })
+    await expect(stageWorkshopChange(form(move))).rejects.toThrow(
+      /REDIRECT:\/admin\/workshops\/changes\//
+    )
+    await prisma.workshopSession.delete({ where: { id: conflict.id } })
 
     await expect(stageWorkshopChange(form(move))).rejects.toThrow(
       /REDIRECT:\/admin\/workshops\/changes\//
     )
     const change = await prisma.workshopChange.findFirstOrThrow({
-      where: { workshopId: direct.id, appliedAt: null },
+      where: { workshopSessionId: direct.id, appliedAt: null },
       orderBy: { createdAt: 'desc' },
     })
     await prisma.availability.deleteMany({
@@ -393,11 +440,22 @@ describe('direct workshop booking', () => {
       (await prisma.workshopChange.findUniqueOrThrow({ where: { id: change.id } })).appliedAt
     ).toBe(null)
     await prisma.availability.createMany({
-      data: [780, 810].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 3, startMin })),
+      data: [780, 795, 810, 825].map((startMin) => ({
+        userId: f.pa.id,
+        dayOfWeek: 3,
+        startMin,
+      })),
     })
-    await expect(applyWorkshopChange(form({ id: change.id }))).rejects.toThrow(/changed=1/)
+    await expect(stageWorkshopChange(form(move))).rejects.toThrow(
+      /REDIRECT:\/admin\/workshops\/changes\//
+    )
+    const refreshed = await prisma.workshopChange.findFirstOrThrow({
+      where: { workshopSessionId: direct.id, appliedAt: null, id: { not: change.id } },
+      orderBy: { createdAt: 'desc' },
+    })
+    await expect(applyWorkshopChange(form({ id: refreshed.id }))).rejects.toThrow(/changed=1/)
 
-    const saved = await prisma.workshop.findUniqueOrThrow({
+    const saved = await prisma.workshopSession.findUniqueOrThrow({
       where: { id: direct.id },
       include: { assignments: true },
     })

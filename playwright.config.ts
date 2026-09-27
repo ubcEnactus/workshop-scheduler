@@ -14,6 +14,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.AUTH_URL,
     browserName: 'chromium',
+    ignoreHTTPSErrors: process.env.E2E_PREVIEW_DEMO === 'true',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -21,6 +22,7 @@ export default defineConfig({
     command: 'node scripts/e2e-server.mjs',
     url: `${process.env.AUTH_URL}/login`,
     reuseExistingServer: false,
+    ignoreHTTPSErrors: process.env.E2E_PREVIEW_DEMO === 'true',
     timeout: 120_000,
   },
 })

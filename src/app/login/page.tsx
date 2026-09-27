@@ -4,8 +4,10 @@ import { ArrowLeft, GraduationCap, Mail, ShieldCheck, Sparkles, Users } from 'lu
 import { redirect } from 'next/navigation'
 import { AuthError } from 'next-auth'
 
-import { buttonClasses } from '@/components/ui/button'
+import { SubmitButton } from '@/components/submit-button'
 import { getCurrentUser, signIn } from '@/lib/auth'
+import { isEmailSignInReady } from '@/lib/auth-email'
+import { prisma } from '@/lib/db'
 import { getPreviewDemoConfig } from '@/lib/preview-demo-auth'
 import { loginSchema } from '@/lib/schemas/auth'
 import { previewDemoLogin } from './actions'
@@ -18,13 +20,40 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   if (user) redirect('/')
 
   const { callbackUrl, error } = await searchParams
+  const emailSignInReady = isEmailSignInReady({
+    nodeEnv: process.env.NODE_ENV,
+    apiKey: process.env.AUTH_RESEND_KEY,
+    from: process.env.AUTH_RESEND_FROM,
+  })
   const previewDemoConfig = getPreviewDemoConfig()
+  const previewAccounts = previewDemoConfig
+    ? await prisma.user.findMany({
+        where: {
+          deletedAt: null,
+          OR: [
+            { email: previewDemoConfig.adminEmail, role: 'ADMIN' },
+            { email: previewDemoConfig.teacherEmail, role: 'TEACHER' },
+            { email: previewDemoConfig.paEmail, role: 'PA' },
+          ],
+        },
+        select: { email: true, role: true },
+      })
+    : []
 
   async function sendMagicLink(formData: FormData) {
     'use server'
     const parsed = loginSchema.safeParse({ email: formData.get('email') })
     if (!parsed.success) {
       redirect('/login?error=InvalidEmail')
+    }
+    if (
+      !isEmailSignInReady({
+        nodeEnv: process.env.NODE_ENV,
+        apiKey: process.env.AUTH_RESEND_KEY,
+        from: process.env.AUTH_RESEND_FROM,
+      })
+    ) {
+      redirect('/login?error=EmailUnavailable')
     }
     try {
       await signIn('resend', {
@@ -101,9 +130,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           </p>
           <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#1e2a4a]">Sign in</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            {previewDemoConfig
-              ? 'Choose a demo role to explore this private preview.'
-              : "Enter your invited email address. We'll send you a secure, one-time sign-in link."}
+            Use the email your admin added for your admin, PA or teacher account. We&apos;ll send
+            you a secure, one-time sign-in link. No password is needed.
           </p>
 
           {error ? (
@@ -112,21 +140,60 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
               className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
             >
               {error === 'PreviewDemoUnavailable'
-                ? 'Preview demo sign-in is unavailable.'
-                : 'Sign-in failed. Check the email address and try again.'}
+                ? 'Demo sign-in is unavailable. Please contact your admin.'
+                : error === 'EmailUnavailable'
+                  ? 'Email sign-in is not available yet. Please contact your admin.'
+                  : 'Sign-in failed. Check the email address and try again.'}
             </div>
           ) : null}
 
-          {previewDemoConfig ? (
+          <form action={sendMagicLink} className="mt-8 space-y-5">
+            <div className="field">
+              <label htmlFor="email">Email</label>
+              <div className="relative">
+                <Mail
+                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
+                  aria-hidden="true"
+                />
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="input w-full pl-10"
+                />
+              </div>
+            </div>
+            {!emailSignInReady ? (
+              <p className="text-sm leading-6 text-slate-600">
+                Email sign-in is not available yet. Please contact your admin.
+              </p>
+            ) : null}
+            <SubmitButton
+              disabled={!emailSignInReady}
+              pendingLabel="Sending sign-in link…"
+              className="w-full"
+            >
+              Send sign-in link
+            </SubmitButton>
+            <p className="text-xs leading-5 text-slate-500">
+              New here? Ask an admin to add your email. Your account determines which dashboard you
+              see.
+            </p>
+          </form>
+
+          {previewDemoConfig && previewAccounts.length > 0 ? (
             <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
               <div className="flex items-start gap-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-[#1e2a4a]">
                   <ShieldCheck className="size-5" aria-hidden="true" />
                 </span>
                 <div>
-                  <h2 className="font-bold text-[#1e2a4a]">Preview demo access</h2>
+                  <h2 className="font-bold text-[#1e2a4a]">Try a demo account</h2>
                   <p className="mt-1 text-sm leading-5 text-slate-600">
-                    Choose a role to explore this private preview. No email is sent.
+                    These shared accounts use this workspace&apos;s saved data. No email is needed.
                   </p>
                 </div>
               </div>
@@ -136,75 +203,50 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                   [
                     {
                       role: 'ADMIN',
-                      label: 'Continue as admin',
+                      label: 'Continue as demo admin',
                       email: previewDemoConfig.adminEmail,
                       icon: ShieldCheck,
                     },
                     {
                       role: 'TEACHER',
-                      label: 'Continue as teacher',
+                      label: 'Continue as demo teacher',
                       email: previewDemoConfig.teacherEmail,
                       icon: GraduationCap,
                     },
                     {
                       role: 'PA',
-                      label: 'Continue as PA',
+                      label: 'Continue as demo PA',
                       email: previewDemoConfig.paEmail,
                       icon: Users,
                     },
                   ] as const
-                ).map(({ role, label, email, icon: Icon }) => (
-                  <form action={previewDemoLogin} key={role}>
-                    <input type="hidden" name="role" value={role} />
-                    <PreviewDemoButton ariaLabel={`${label} (${email})`}>
-                      <span className="flex min-w-0 items-center gap-3">
-                        <Icon className="size-4 shrink-0 text-amber-700" aria-hidden="true" />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-slate-800">
+                )
+                  .filter(({ role, email }) =>
+                    previewAccounts.some(
+                      (account) => account.role === role && account.email === email
+                    )
+                  )
+                  .map(({ role, label, icon: Icon }) => (
+                    <form action={previewDemoLogin} key={role}>
+                      <input type="hidden" name="role" value={role} />
+                      <PreviewDemoButton ariaLabel={label}>
+                        <span className="flex min-w-0 items-center gap-3">
+                          <Icon className="size-4 shrink-0 text-amber-700" aria-hidden="true" />
+                          <span className="min-w-0 text-sm font-semibold text-slate-800">
                             {label}
                           </span>
-                          <span className="block truncate text-xs font-normal text-slate-600">
-                            {email}
-                          </span>
                         </span>
-                      </span>
-                    </PreviewDemoButton>
-                  </form>
-                ))}
+                      </PreviewDemoButton>
+                    </form>
+                  ))}
               </div>
             </section>
           ) : null}
 
-          {previewDemoConfig ? null : (
-            <form action={sendMagicLink} className="mt-8 space-y-5">
-              <div className="field">
-                <label htmlFor="email">Email</label>
-                <div className="relative">
-                  <Mail
-                    className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400"
-                    aria-hidden="true"
-                  />
-                  <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    placeholder="you@example.com"
-                    className="input w-full pl-10"
-                  />
-                </div>
-              </div>
-              <button type="submit" className={`${buttonClasses({ variant: 'primary' })} w-full`}>
-                Send magic link
-              </button>
-            </form>
-          )}
-
           <div className="mt-8 border-t border-slate-200 pt-6">
             <p className="text-xs leading-5 text-slate-500">
               {previewDemoConfig
-                ? 'This preview uses test data. Demo sessions expire after two hours.'
+                ? 'Sessions expire after two hours. Your saved information remains after you sign out.'
                 : 'New here? Ask an admin to add you. Only invited email addresses can sign in.'}
             </p>
           </div>

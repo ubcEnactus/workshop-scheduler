@@ -32,6 +32,56 @@ export function ChangeSummary({ before, after }: { before: unknown; after: unkno
                 {state.pas.map((p) => p.name).join(', ') || 'None'}
               </span>
             </p>
+            {state.minPAs !== undefined && (
+              <p className="mt-2 text-sm text-slate-600">
+                Staffing: {state.pas.length} assigned · {state.minPAs}–{state.maxPAs} needed
+                {state.pas.length < state.minPAs && state.status !== 'CANCELLED'
+                  ? ' · Needs staff'
+                  : ''}
+              </p>
+            )}
+            {state.location && (
+              <p className="mt-2 text-sm break-words text-slate-600">
+                {state.location}
+              </p>
+            )}
+            {state.participantInstructions && (
+              <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">
+                Participant instructions: {state.participantInstructions}
+              </p>
+            )}
+            {state.hostTeacherName && (
+              <p className="mt-2 text-sm text-slate-600">Teacher: {state.hostTeacherName}</p>
+            )}
+            {state.notes && (
+              <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">
+                Internal notes: {state.notes}
+              </p>
+            )}
+            {state.dateExceptionReason && (
+              <p className="mt-2 text-sm text-amber-800">
+                Admin date exception: {state.dateExceptionReason}
+              </p>
+            )}
+            {!!state.workloadOverrides?.length && (
+              <p className="mt-2 text-sm text-amber-800">
+                Recorded workload exceptions:{' '}
+                {state.workloadOverrides
+                  .map(
+                    (override) =>
+                      `${state.pas.find((pa) => pa.id === override.paId)?.name ?? 'PA'} (${[override.sameDay ? 'same day' : '', override.week ? 'same week' : ''].filter(Boolean).join(' + ')})`
+                  )
+                  .join(', ')}
+              </p>
+            )}
+            {!!state.availabilityOverrides?.length && (
+              <p className="mt-2 text-sm text-amber-800">
+                ⚠ Assigned despite missing or partial availability:{' '}
+                {state.availabilityOverrides
+                  .map((override) => state.pas.find((pa) => pa.id === override.paId)?.name ?? 'PA')
+                  .join(', ')}
+              </p>
+            )}
           </div>
         </div>
       ))}

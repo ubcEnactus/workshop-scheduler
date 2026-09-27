@@ -44,21 +44,24 @@ export function ScheduleToolbar({
   return (
     <section
       aria-label="Month and filters"
+      aria-busy={pending}
       className="rounded-xl border border-slate-200 bg-white p-4"
     >
       <div className="flex flex-wrap items-end gap-3">
-        <label className="field min-w-40 flex-1">
-          Month
-          <input
-            type="month"
-            className="input"
-            value={monthInput}
-            onChange={(e) => {
-              setMonthInput(e.target.value)
-              if (monthSchema.safeParse(e.target.value).success) change({ month: e.target.value })
-            }}
-          />
-        </label>
+        {!context.workshopDefinitionId && (
+          <label className="field min-w-40 flex-1">
+            Month
+            <input
+              type="month"
+              className="input"
+              value={monthInput}
+              onChange={(e) => {
+                setMonthInput(e.target.value)
+                if (monthSchema.safeParse(e.target.value).success) change({ month: e.target.value })
+              }}
+            />
+          </label>
+        )}
         <label className="field min-w-40 flex-1">
           School filter
           <select
@@ -81,14 +84,14 @@ export function ScheduleToolbar({
           </select>
         </label>
         <label className="field min-w-40 flex-1">
-          Class filter
+          Teacher filter
           <select
-            aria-label="Class filter"
+            aria-label="Teacher filter"
             className="input"
             value={draft.classSectionId ?? ''}
             onChange={(e) => change({ classSectionId: e.target.value || undefined })}
           >
-            <option value="">All classes</option>
+            <option value="">All teachers</option>
             {classes
               .filter((c) => !draft.schoolId || c.schoolId === draft.schoolId)
               .map((c) => (
@@ -99,7 +102,11 @@ export function ScheduleToolbar({
           </select>
         </label>
         <Link
-          href={schedulingHref('/admin/workshops', { month: draft.month })}
+          href={schedulingHref('/admin/workshops', {
+            month: draft.month,
+            workshopDefinitionId: draft.workshopDefinitionId,
+            batch: draft.batch,
+          })}
           onClick={(event) =>
             navigate(event, { schoolId: undefined, classSectionId: undefined, view: undefined })
           }
@@ -109,29 +116,33 @@ export function ScheduleToolbar({
         </Link>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
-        <Link
-          scroll={false}
-          href={schedulingHref('/admin/workshops', {
-            ...draft,
-            month: shiftMonth(draft.month, -1),
-          })}
-          onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, -1) })}
-        >
-          ← Previous month
-        </Link>
-        <span role={pending ? 'status' : undefined} className="text-xs text-slate-600">
+        {!context.workshopDefinitionId && (
+          <Link
+            scroll={false}
+            href={schedulingHref('/admin/workshops', {
+              ...draft,
+              month: shiftMonth(draft.month, -1),
+            })}
+            onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, -1) })}
+          >
+            ← Previous month
+          </Link>
+        )}
+        <span role="status" aria-live="polite" className="text-xs text-slate-600">
           {pending ? 'Updating schedule…' : 'Vancouver time · filters apply automatically'}
         </span>
-        <Link
-          scroll={false}
-          href={schedulingHref('/admin/workshops', {
-            ...draft,
-            month: shiftMonth(draft.month, 1),
-          })}
-          onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, 1) })}
-        >
-          Next month →
-        </Link>
+        {!context.workshopDefinitionId && (
+          <Link
+            scroll={false}
+            href={schedulingHref('/admin/workshops', {
+              ...draft,
+              month: shiftMonth(draft.month, 1),
+            })}
+            onClick={(event) => navigate(event, { month: shiftMonth(requested.current.month, 1) })}
+          >
+            Next month →
+          </Link>
+        )}
       </div>
     </section>
   )

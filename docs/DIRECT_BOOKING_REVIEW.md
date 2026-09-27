@@ -10,7 +10,7 @@ The dashboard's monthly task links were removed. The sidebar now has one **Class
 - The confirmation remains valid when the admin edits or reschedules that same class's occurrence. Changing the class does not carry the previous class's confirmation. Existing workshops and monthly batch planning continue to require a hosting block.
 - Weekday/date validity, active school/teacher/class consistency, class and teacher overlaps, PA availability, quotas, day spacing, locking, publication review, and role privacy remain enforced.
 - School, teacher, class, booking batch and workshop writes share the scheduling transaction lock. Validation failure rolls back every new record. Request keys make repeated submissions idempotent and reject changed payloads or a different actor.
-- Normalized names reuse active schools within the same district and classes for the same teacher/school. Canonical teacher email can reuse an active teacher at that school; collisions with other roles, inactive accounts or another school are rejected.
+- Normalized names reuse active schools and classes for the same teacher/school. Canonical teacher email can reuse an active teacher at that school; collisions with other roles, inactive accounts or another school are rejected.
 - The assignment gap defaults to **7 Vancouver calendar days**. The additive migration initializes NULL settings and increments their revision, preserving deliberately configured values and all existing workshops. The protected test app is explicitly set to 7 days through its settings action.
 
 ## Review iterations

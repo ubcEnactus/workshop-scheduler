@@ -1,3 +1,4 @@
+import { createSessionFixture } from '../fixtures'
 import { test, expect } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { resetFixtures } from '../fixtures'
@@ -20,13 +21,13 @@ test('publication never exposes stale draft actions while the workspace refresh 
     data: { paId: fixture.pa.id, month: '2027-01', quota: 1 },
   })
   await prisma.availability.createMany({
-    data: [600, 630].map((startMin) => ({
+    data: [600, 615, 630, 645].map((startMin) => ({
       userId: fixture.pa.id,
       dayOfWeek: 0,
       startMin,
     })),
   })
-  const workshop = await prisma.workshop.create({
+  const workshop = await createSessionFixture({
     data: {
       classSectionId: fixture.cls.id,
       scheduledStart: vancouverToUtc('2027-01-04', 600),
@@ -62,16 +63,18 @@ test('publication never exposes stale draft actions while the workspace refresh 
     await page.getByRole('checkbox', { name: /Select Fixture Biology .* for publication/ }).check()
     await page.getByRole('button', { name: 'Review publication (1)' }).click()
     delayRefresh = true
-    await page.getByRole('button', { name: 'Publish selected workshops' }).click()
+    await page.getByRole('button', { name: 'Publish selected teacher sessions' }).click()
     await expect.poll(() => heldRefresh).toBe(true)
 
-    await expect(page.getByText('1 workshop published.', { exact: true })).toBeVisible()
+    await expect(page.getByText(/^1 teacher session published\./)).toBeVisible()
     await expect(page.getByText('published', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Staff Fixture Biology' })).toHaveCount(0)
     await expect(
       page.getByRole('checkbox', { name: /Select Fixture Biology .* for publication/ })
     ).toHaveCount(0)
-    expect(await prisma.workshop.findUniqueOrThrow({ where: { id: workshop.id } })).toMatchObject({
+    expect(
+      await prisma.workshopSession.findUniqueOrThrow({ where: { id: workshop.id } })
+    ).toMatchObject({
       status: 'PUBLISHED',
     })
   } finally {

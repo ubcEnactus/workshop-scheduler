@@ -1,34 +1,30 @@
 import type { Prisma } from '@prisma/client'
+import { createHash } from 'node:crypto'
 import { loadSchedule, SchedulingError } from './store'
-import { eligibility, staffingProblems } from './eligibility'
+import { staffingProblems, type ManualAssignmentInput } from './eligibility'
 import { scheduleHash } from './matching-preview'
 import { auditState } from './changes'
+import { applyDraftTeamEdit } from './draft-operations'
 
 export async function changeDraftStaffing(
   tx: Prisma.TransactionClient,
-  input: { id: string; version: number; paId: string },
+  actor: { id: string; name: string | null; email: string },
+  input: { id: string; version: number; paId: string } & Partial<ManualAssignmentInput>,
   operation: 'assign' | 'remove'
 ) {
-  const snapshot = await loadSchedule(tx)
-  const workshop = snapshot.workshops.find((w) => w.id === input.id)
-  if (!workshop || workshop.status !== 'DRAFT')
-    throw new SchedulingError('Select a draft workshop.')
-  if (workshop.version !== input.version)
-    throw new SchedulingError('This workshop changed. Reload and try again.')
-  if (operation === 'assign') {
-    if (workshop.assignments.some((a) => a.paId === input.paId))
-      throw new SchedulingError('This PA is already assigned.')
-    const reasons = eligibility(snapshot, workshop, input.paId)
-    if (reasons.length) throw new SchedulingError(reasons.join(' '))
-    await tx.assignment.create({
-      data: { workshopId: input.id, paId: input.paId, status: 'DRAFT', source: 'MANUAL' },
-    })
-  } else {
-    await tx.assignment.deleteMany({ where: { workshopId: input.id, paId: input.paId } })
-  }
-  await tx.workshop.update({
+  const session = await tx.workshopSession.findUnique({
     where: { id: input.id },
-    data: { locked: true, version: { increment: 1 } },
+    include: { classWorkshop: true },
+  })
+  if (!session) throw new SchedulingError('Select a draft workshop.')
+  return applyDraftTeamEdit(tx, actor, {
+    workshopDefinitionId: session.classWorkshop.workshopDefinitionId,
+    sessionId: input.id,
+    version: input.version,
+    paId: input.paId,
+    operation,
+    expectedPolicyHash: input.expectedPolicyHash,
+    requestKey: `direct:${actor.id}:${input.id}:${input.version}:${operation}:${input.paId}`,
   })
 }
 
@@ -36,9 +32,31 @@ export async function publishDrafts(
   tx: Prisma.TransactionClient,
   actor: { id: string; name: string | null; email: string },
   entries: { id: string; version: number }[],
-  expectedHash?: string
+  expectedHash?: string,
+  scope?: { month: string; classSectionIds?: string[] } | { workshopDefinitionId: string },
+  requestKey?: string
 ) {
-  const snapshot = await loadSchedule(tx)
+  const payloadHash = createHash('sha256')
+    .update(JSON.stringify({ entries, expectedHash, scope }))
+    .digest('hex')
+  if (requestKey) {
+    const receipt = await tx.publicationReceipt.findUnique({ where: { requestKey } })
+    if (receipt) {
+      if (receipt.actorId !== actor.id || receipt.payloadHash !== payloadHash)
+        throw new SchedulingError('This publication request changed. Review the sessions again.')
+      return
+    }
+  }
+  const snapshot = await loadSchedule(
+    tx,
+    scope
+      ? 'workshopDefinitionId' in scope
+        ? { kind: 'run', workshopDefinitionId: scope.workshopDefinitionId }
+        : { kind: 'month', month: scope.month, classSectionIds: scope.classSectionIds }
+      : expectedHash
+        ? undefined
+        : { kind: 'sessions', workshopSessionIds: entries.map((entry) => entry.id) }
+  )
   if (expectedHash && scheduleHash(snapshot) !== expectedHash)
     throw new SchedulingError(
       'Schedule or eligibility changed. Close this review, reload the schedule and review again.'
@@ -47,6 +65,14 @@ export async function publishDrafts(
     const workshop = snapshot.workshops.find((w) => w.id === entry.id)
     if (!workshop || workshop.status !== 'DRAFT')
       throw new SchedulingError('Only drafts can be published.')
+    if (
+      scope &&
+      'workshopDefinitionId' in scope &&
+      workshop.workshopDefinitionId !== scope.workshopDefinitionId
+    )
+      throw new SchedulingError(
+        'A selected teacher session is outside this workshop. Reload the schedule.'
+      )
     if (workshop.version !== entry.version)
       throw new SchedulingError('This workshop changed. Reload and try again.')
     const problems = staffingProblems(snapshot, workshop)
@@ -56,10 +82,10 @@ export async function publishDrafts(
   // Validate every selected workshop before the first write; the surrounding transaction is atomic.
   for (const workshop of workshops) {
     await tx.assignment.updateMany({
-      where: { workshopId: workshop.id },
+      where: { workshopSessionId: workshop.id },
       data: { status: 'PUBLISHED' },
     })
-    await tx.workshop.update({
+    await tx.workshopSession.update({
       where: { id: workshop.id },
       data: {
         status: 'PUBLISHED',
@@ -70,7 +96,7 @@ export async function publishDrafts(
     })
     await tx.workshopEvent.create({
       data: {
-        workshopId: workshop.id,
+        workshopSessionId: workshop.id,
         actorId: actor.id,
         actorName: actor.name ?? actor.email,
         kind: 'PUBLISH',
@@ -82,4 +108,13 @@ export async function publishDrafts(
       },
     })
   }
+  if (requestKey)
+    await tx.publicationReceipt.create({
+      data: {
+        requestKey,
+        actorId: actor.id,
+        payloadHash,
+        sessionIds: entries.map((entry) => entry.id),
+      },
+    })
 }

@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { NEW_CHOICE, workshopBookingSchema } from './booking'
 
 const valid = {
+  workshopDefinitionId: 'fixture-definition-1',
   requestKey: '96ca6a32-bbb0-458e-b224-1d8c57e28563',
   schoolChoice: NEW_CHOICE,
   schoolName: ' Cedar School ',
-  schoolDistrict: '',
   teacherChoice: NEW_CHOICE,
   teacherName: ' Alex Teacher ',
   teacherEmail: ' Alex@Example.Test ',
@@ -20,10 +20,9 @@ const valid = {
 }
 
 describe('workshopBookingSchema', () => {
-  it('normalizes direct booking text and accepts a blank district', () => {
+  it('normalizes direct booking text', () => {
     expect(workshopBookingSchema.parse(valid)).toMatchObject({
       schoolName: 'Cedar School',
-      schoolDistrict: '',
       teacherName: 'Alex Teacher',
       teacherEmail: 'alex@example.test',
       className: 'Science 10',
@@ -36,7 +35,7 @@ describe('workshopBookingSchema', () => {
     ['schoolName', { schoolName: '' }],
     ['teacherName', { teacherName: '' }],
     ['teacherEmail', { teacherEmail: '' }],
-    ['className', { className: '' }],
+    ['className', { className: 'x'.repeat(201) }],
     ['endTime', { endTime: '09:00' }],
     ['maxPAs', { maxPAs: '0' }],
     ['date', { date: '2027-01-03' }],
@@ -58,5 +57,11 @@ describe('workshopBookingSchema', () => {
         view: '',
       }).success
     ).toBe(true)
+  })
+
+  it('uses a reusable workshop group when the optional class label is blank', () => {
+    expect(workshopBookingSchema.parse({ ...valid, className: '  ' }).className).toBe(
+      'Workshop group'
+    )
   })
 })

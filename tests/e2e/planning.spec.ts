@@ -1,42 +1,55 @@
 import { test, expect } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
-import { resetFixtures } from '../fixtures'
+import { resetFixtures, addCandidateFixture } from '../fixtures'
 import { login } from './helpers'
-test.afterAll(async () => {
-  await prisma.$disconnect()
-})
-test('plans two months for selected classes with different cadences and keeps existing slots', async ({
+test.afterAll(() => prisma.$disconnect())
+test('plans explicit candidates for two named runs and preserves other run enrollment', async ({
   page,
 }) => {
   const f = await resetFixtures()
-  await prisma.classSection.update({ where: { id: f.sibling.id }, data: { monthlyCadence: 2 } })
+  await prisma.classMeeting.deleteMany({
+    where: { classSectionId: { in: [f.cls.id, f.sibling.id] } },
+  })
   await login(page, f.admin.email, 'admin')
-  for (const month of ['2027-01', '2027-02']) {
-    await page.goto('/admin/workshops/plan?month=' + month)
-    await page.getByRole('button', { name: 'Select all classes' }).click()
-    await page.getByRole('button', { name: 'Preview slots' }).click()
-    const dates = page.locator('input[name="date"]'),
-      times = page.locator('input[name="startTime"]')
-    await expect(dates).toHaveCount(3)
-    await dates.nth(0).fill(month + '-' + (month.endsWith('01') ? '04' : '01'))
-    await dates.nth(1).fill(month + '-' + (month.endsWith('01') ? '04' : '01'))
-    await dates.nth(2).fill(month + '-' + (month.endsWith('01') ? '11' : '08'))
-    await times.nth(0).fill('09:00')
-    await times.nth(1).fill('11:00')
-    await times.nth(2).fill('11:00')
-    await page.getByRole('button', { name: 'Create planned workshops' }).click()
+  for (const [month, day, number] of [
+    ['2027-01', '04', 1],
+    ['2027-02', '01', 3],
+  ] as const) {
+    const definitionId = `fixture-definition-${number}`
+    await prisma.workshopDefinition.update({
+      where: { id: definitionId },
+      data: {
+        deliveryStartsOn: new Date(`${month}-01T00:00:00.000Z`),
+        deliveryEndsOn: new Date(`${month}-28T00:00:00.000Z`),
+      },
+    })
+    await addCandidateFixture(f.cls.id, `${month}-${day}`, `fixture-definition-${number}`, 540, 600)
+    await addCandidateFixture(
+      f.sibling.id,
+      `${month}-${day}`,
+      `fixture-definition-${number}`,
+      660,
+      720
+    )
+    await addCandidateFixture(f.sibling.id, `${month}-${day}`, `fixture-definition-${number + 1}`)
+    await page.goto(
+      `/admin/workshops/plan?workshopDefinitionId=${definitionId}&week=${month}-${day}`
+    )
+    const candidates = page.getByRole('combobox', { name: /^Fixture School/ })
+    await expect(candidates).toHaveCount(2)
+    for (const candidate of await candidates.all()) await candidate.selectOption({ index: 1 })
+    await page.getByRole('button', { name: 'Save dates & continue', exact: true }).click()
     await expect(page).toHaveURL(/batch=/)
-    await expect(page.getByRole('table').getByRole('row')).toHaveCount(4)
-    await page.goto('/admin/workshops/plan?month=' + month)
-    await page.getByRole('button', { name: 'Select all classes' }).click()
-    await page.getByRole('button', { name: 'Preview slots' }).click()
-    await expect(
-      page.getByText('No missing occurrences can be planned from the current selection.')
-    ).toBeVisible()
+    expect(
+      await prisma.workshopSession.count({
+        where: { classWorkshop: { workshopDefinitionId: definitionId } },
+      })
+    ).toBe(2)
+    expect(
+      await prisma.classWorkshop.count({
+        where: { workshopDefinitionId: `fixture-definition-${number + 1}` },
+      })
+    ).toBe(1)
   }
-  expect(await prisma.workshop.count()).toBe(6)
-  await page.goto('/admin/workshops/plan?month=2027-03')
-  await page.getByRole('checkbox', { name: /Fixture Biology/ }).check()
-  await page.getByRole('button', { name: 'Preview slots' }).click()
-  await expect(page.locator('input[name="date"]')).toHaveCount(1)
+  expect(await prisma.workshopSession.count()).toBe(4)
 })

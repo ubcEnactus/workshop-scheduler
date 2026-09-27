@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emailDeliveryMode } from './auth-email'
+import { emailDeliveryMode, isEmailSignInReady } from './auth-email'
 describe('email delivery configuration', () => {
   it('permits local console delivery without credentials', () => {
     expect(emailDeliveryMode({ nodeEnv: 'development' })).toBe('console')
@@ -24,5 +24,24 @@ describe('email delivery configuration', () => {
         from: 'Club <team@school.test>',
       })
     ).toBe('resend')
+  })
+  it('keeps hosted email sign-in unavailable until a key and sender are configured', () => {
+    expect(isEmailSignInReady({ nodeEnv: 'production' })).toBe(false)
+    expect(isEmailSignInReady({ nodeEnv: 'production', apiKey: 'configured' })).toBe(false)
+    expect(
+      isEmailSignInReady({
+        nodeEnv: 'production',
+        apiKey: 'configured',
+        from: 'Club <no-reply@example.com>',
+      })
+    ).toBe(false)
+    expect(
+      isEmailSignInReady({
+        nodeEnv: 'production',
+        apiKey: 'configured',
+        from: 'Club <team@school.test>',
+      })
+    ).toBe(true)
+    expect(isEmailSignInReady({ nodeEnv: 'development' })).toBe(true)
   })
 })

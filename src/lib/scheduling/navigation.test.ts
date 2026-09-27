@@ -29,11 +29,13 @@ describe('schedule navigation context', () => {
       schoolId: 's & 1',
       classSectionId: 'c',
       view: 'ready',
+      workshopDefinitionId: 'workshop-1',
+      week: '2027-01-04',
       returnTo: 'https://other.test',
     })
     const url = schedulingHref('/admin/workshops/plan', context)
     expect(url).toBe(
-      '/admin/workshops/plan?month=2027-01&schoolId=s+%26+1&classSectionId=c&view=ready'
+      '/admin/workshops/plan?month=2027-01&schoolId=s+%26+1&classSectionId=c&view=ready&workshopDefinitionId=workshop-1&week=2027-01-04'
     )
     expect(
       parseSchedulingContext(Object.fromEntries(new URLSearchParams(url.split('?')[1])))
@@ -46,7 +48,7 @@ describe('schedule navigation context', () => {
       [{ id: 's1' }, { id: 's2' }]
     )
     expect(result.context).toEqual({ month: '2027-01', schoolId: 's1' })
-    expect(result.warning).toContain('class filter was cleared')
+    expect(result.warning).toContain('teacher filter was cleared')
     expect(normalizeSchedulingContext({ schoolId: 'deleted' }, [], []).warning).toContain(
       'school filter was cleared'
     )
@@ -60,5 +62,17 @@ describe('schedule navigation context', () => {
     expect(
       schedulingHref('/admin/workshops', { ...context, schoolId: 's' }, { schoolId: undefined })
     ).toBe('/admin/workshops?month=2027-01')
+  })
+  it('opens class detours in the month containing the preserved planning week', () => {
+    expect(
+      parseSchedulingContext({
+        workshopDefinitionId: 'workshop-1',
+        week: '2027-03-29',
+      })
+    ).toEqual({
+      month: '2027-03',
+      workshopDefinitionId: 'workshop-1',
+      week: '2027-03-29',
+    })
   })
 })

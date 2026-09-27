@@ -22,7 +22,7 @@ export function addAvailabilityRange(
     start % SLOT_MINUTES ||
     end % SLOT_MINUTES
   )
-    throw new Error('Choose a valid 30-minute range between 8:30 AM and 3:00 PM.')
+    throw new Error('Choose a valid 15-minute range between 8:30 AM and 3:00 PM.')
   return new Set([
     ...slots,
     ...Array.from(

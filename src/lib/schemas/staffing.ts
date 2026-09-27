@@ -10,7 +10,10 @@ export const gapSchema = z.object({
   month: monthSchema.optional(),
   minimumGapDays: integer.refine((n) => n >= 1 && n <= 365, 'Choose a gap of 1 to 365 whole days.'),
 })
-export const staffSchema = workshopVersionSchema.extend({ paId: z.string().min(1) })
+export const staffSchema = workshopVersionSchema.extend({
+  paId: z.string().min(1),
+  expectedPolicyHash: z.string().length(64).optional(),
+})
 export const lockSchema = workshopVersionSchema.extend({
   locked: z.enum(['true', 'false']).transform((value) => value === 'true'),
 })

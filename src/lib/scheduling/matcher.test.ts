@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { matchWorkshops } from './matcher'
+import { matchPlanSchema } from '@/lib/schemas/matching'
 import type { ScheduleSnapshot, ScheduledWorkshop } from './eligibility'
 import { vancouverToUtc } from '@/lib/time'
+
 function workshop(id: string, date = '2027-01-04', minute = 600): ScheduledWorkshop {
   return {
     id,
     classSectionId: id,
-    schoolId: 'school',
+    schoolId: id,
     scheduledStart: vancouverToUtc(date, minute),
     scheduledEnd: vancouverToUtc(date, minute + 60),
     minPAs: 1,
@@ -18,118 +20,227 @@ function workshop(id: string, date = '2027-01-04', minute = 600): ScheduledWorks
     assignments: [],
   }
 }
-function snapshot(workshops: ScheduledWorkshop[]): ScheduleSnapshot {
+
+function snapshot(workshops: ScheduledWorkshop[], ids = ['a', 'b']): ScheduleSnapshot {
   return {
-    minimumGapDays: 1,
-    pas: ['a', 'b'].map((id) => ({ id, name: id, email: id + '@test.local' })),
-    availability: ['a', 'b'].flatMap((userId) =>
+    minimumGapDays: null,
+    pas: ids.map((id) => ({ id, name: id, email: `${id}@test.local` })),
+    availability: ids.flatMap((userId) =>
       [0, 1, 2, 3, 4].flatMap((dayOfWeek) =>
-        Array.from({ length: 13 }, (_, i) => ({ userId, dayOfWeek, startMin: 510 + i * 30 }))
+        Array.from({ length: 28 }, (_, index) => ({
+          userId,
+          dayOfWeek,
+          startMin: 510 + index * 15,
+          effectiveFrom: '2020-01-01',
+        }))
       )
     ),
-    quotas: ['a', 'b'].map((paId) => ({ paId, month: '2027-01', quota: 4 })),
+    quotas: [],
     workshops,
   }
 }
+
 describe('pure automatic matcher', () => {
-  it('prioritizes scarce slots and fills every minimum before optional capacity', () => {
-    const early = workshop('early'),
-      scarce = workshop('scarce', '2027-01-04', 720)
-    early.maxPAs = 2
-    const s = snapshot([early, scarce])
-    s.availability = s.availability.filter((a) => a.userId !== 'b' || a.startMin < 720)
-    s.quotas.forEach((q) => (q.quota = 1))
-    const result = matchWorkshops(s, ['early', 'scarce'])
-    expect(result.find((p) => p.workshopId === 'scarce')?.paIds).toEqual(['a'])
-    expect(result.find((p) => p.workshopId === 'early')?.paIds).toEqual(['b'])
-  })
-  it('balances proportionally toward uneven quotas with deterministic ties', () => {
-    const ws = Array.from({ length: 4 }, (_, i) =>
-      workshop(String(i), '2027-01-' + String(4 + i * 7).padStart(2, '0'))
-    )
-    const s = snapshot(ws)
-    s.quotas[0].quota = 1
-    s.quotas[1].quota = 3
-    const output = matchWorkshops(
-      s,
-      ws.map((w) => w.id)
-    )
-    expect(output.flatMap((p) => p.paIds).filter((id) => id === 'a')).toHaveLength(1)
-    expect(output.flatMap((p) => p.paIds).filter((id) => id === 'b')).toHaveLength(3)
-    expect(matchWorkshops(s, ws.map((w) => w.id).reverse())).toEqual(output)
-  })
-  it('preserves manual, locked, published and historical work and leaves input dates unchanged', () => {
-    const ws = ['manual', 'locked', 'published', 'completed', 'cancelled', 'auto'].map((id) =>
-      workshop(id)
-    )
-    ws[0].assignments = [{ paId: 'a', status: 'DRAFT', source: 'MANUAL' }]
-    ws[1].locked = true
-    ws[2].status = 'PUBLISHED'
-    ws[3].status = 'COMPLETED'
-    ws[4].status = 'CANCELLED'
-    const s = snapshot(ws),
-      before = JSON.stringify(s)
-    const output = matchWorkshops(
-      s,
-      ws.map((w) => w.id)
-    )
-    expect(output.filter((p) => p.protected)).toHaveLength(5)
-    expect(JSON.stringify(s)).toBe(before)
-    expect(Object.keys(output[0]).sort()).toEqual(['paIds', 'protected', 'reasons', 'workshopId'])
-  })
-  it('reports missing and zero quotas, unavailable PAs and adjacent-month conflicts', () => {
-    const w = workshop('target', '2027-02-01', 540),
-      prior = workshop('prior', '2027-01-29', 840)
-    prior.status = 'PUBLISHED'
-    prior.assignments = [{ paId: 'a', status: 'PUBLISHED', source: 'MANUAL' }]
-    const s = snapshot([w, prior])
-    s.minimumGapDays = 4
-    s.quotas = [
-      { paId: 'a', month: '2027-02', quota: 1 },
-      { paId: 'b', month: '2027-02', quota: 0 },
+  it.each(['missing', 'partial'])(
+    'never automatically selects a PA with %s availability',
+    (kind) => {
+      const target = workshop('target')
+      const state = snapshot([target], ['a'])
+      state.availability =
+        kind === 'missing' ? [] : state.availability.filter((slot) => slot.startMin !== 630)
+      const [proposal] = matchWorkshops(state, [target.id])
+      expect(proposal.paIds).toEqual([])
+      expect(proposal.automaticOutcome).toBe('PROVEN_SHORTAGE')
+    }
+  )
+
+  it('repairs the four-session greedy counterexample within a bounded search', () => {
+    const workshops = [
+      workshop('w1', '2027-01-04'),
+      workshop('w2', '2027-01-05'),
+      workshop('w3', '2027-01-06'),
+      workshop('w4', '2027-01-07'),
     ]
-    const output = matchWorkshops(s, ['target'])[0]
-    expect(output.paIds).toEqual([])
-    expect(output.reasons.join(' ')).toContain('Insufficient gap')
-    expect(output.reasons.join(' ')).toContain('quota reached')
-    s.quotas = []
-    s.availability = []
-    expect(matchWorkshops(s, ['target'])[0].reasons.join(' ')).toContain('quota is missing')
-    expect(matchWorkshops(s, ['target'])[0].reasons.join(' ')).toContain('Availability is missing')
-  })
-  it('reruns automatic drafts without inflating quota counts', () => {
-    const w = workshop('target')
-    w.assignments = [{ paId: 'a', status: 'DRAFT', source: 'AUTOMATIC' }]
-    const s = snapshot([w])
-    s.quotas.forEach((q) => (q.quota = 1))
-    expect(matchWorkshops(s, ['target'])[0].paIds).toEqual(['a'])
-  })
-  it('never staffs two same-school classes on one date with the same PA on a rerun', () => {
-    const early = workshop('early'),
-      later = workshop('later', '2027-01-04', 720)
-    const s = snapshot([early, later])
-    s.pas = s.pas.filter((pa) => pa.id === 'a')
-    const initial = matchWorkshops(s, ['early', 'later'])
-    expect(initial.flatMap((proposal) => proposal.paIds)).toEqual(['a'])
-    expect(
-      initial.find((proposal) => proposal.workshopId === 'later')?.reasons.join(' ')
-    ).toContain('already has a workshop at this school')
-    early.assignments = [{ paId: 'a', status: 'DRAFT', source: 'AUTOMATIC' }]
-    expect(matchWorkshops(s, ['early', 'later'])).toEqual(initial)
-    expect(matchWorkshops(s, ['later', 'early'])).toEqual(initial)
-  })
-  it('respects same-school commitments outside the match scope and frees cancelled visits', () => {
-    const protectedVisit = workshop('protected'),
-      target = workshop('target', '2027-01-04', 720)
-    protectedVisit.status = 'PUBLISHED'
-    protectedVisit.assignments = [{ paId: 'a', status: 'PUBLISHED', source: 'MANUAL' }]
-    const s = snapshot([protectedVisit, target])
-    s.pas = s.pas.filter((pa) => pa.id === 'a')
-    expect(matchWorkshops(s, ['target'])[0].paIds).toEqual([])
-    expect(matchWorkshops(s, ['target'])[0].reasons.join(' ')).toContain(
-      'already has a workshop at this school'
+    const state = snapshot(workshops, ['a', 'b', 'c', 'd'])
+    const allowed: Record<string, string[]> = {
+      w1: ['a', 'b'],
+      w2: ['a', 'c'],
+      w3: ['b', 'd'],
+      w4: ['a', 'c'],
+    }
+    state.availabilityExceptions = workshops.flatMap((item) =>
+      state.pas
+        .filter((pa) => !allowed[item.id].includes(pa.id))
+        .map((pa) => ({
+          userId: pa.id,
+          date: item.scheduledStart,
+          kind: 'UNAVAILABLE' as const,
+        }))
     )
-    protectedVisit.status = 'CANCELLED'
-    expect(matchWorkshops(s, ['target'])[0].paIds).toEqual(['a'])
+
+    const result = matchWorkshops(
+      state,
+      workshops.map((item) => item.id)
+    )
+    expect(result.every((proposal) => proposal.paIds.length === 1)).toBe(true)
+    for (const proposal of result)
+      expect(allowed[proposal.workshopSessionId]).toContain(proposal.paIds[0])
+    expect(new Set(result.flatMap((proposal) => proposal.paIds))).toEqual(
+      new Set(['a', 'b', 'c', 'd'])
+    )
+    expect(result.every((proposal) => proposal.automaticOutcome === 'COMPLETE')).toBe(true)
+  })
+
+  it('uses lower lifetime assignment totals as a soft deterministic tie-breaker', () => {
+    const target = workshop('target', '2027-03-01')
+    const history = [workshop('old-1', '2026-11-02'), workshop('old-2', '2026-11-09')]
+    for (const item of history) {
+      item.status = 'COMPLETED'
+      item.assignments = [{ paId: 'b', status: 'PUBLISHED', source: 'MANUAL' }]
+    }
+    const state = snapshot([target, ...history])
+    expect(matchWorkshops(state, ['target'])[0].paIds).toEqual(['a'])
+    state.workshops[1].status = 'CANCELLED'
+    state.workshops[2].status = 'CANCELLED'
+    expect(matchWorkshops(state, ['target'])[0].paIds).toEqual(['a'])
+  })
+
+  it('never creates automatic same-day or same-week exceptions', () => {
+    const monday = workshop('monday', '2027-01-04')
+    const tuesday = workshop('tuesday', '2027-01-05')
+    const state = snapshot([monday, tuesday], ['a'])
+    const result = matchWorkshops(state, ['monday', 'tuesday'])
+    expect(result.flatMap((proposal) => proposal.paIds)).toHaveLength(1)
+    expect(result.find((proposal) => !proposal.paIds.length)?.reasons.join(' ')).toContain(
+      'Already assigned another session in this Monday–Friday week.'
+    )
+  })
+
+  it('preserves manual, locked, published, completed, and cancelled work exactly', () => {
+    const workshops = ['manual', 'locked', 'published', 'completed', 'cancelled', 'auto'].map(
+      (id, index) => workshop(id, `2027-0${index + 1}-04`)
+    )
+    workshops[0].assignments = [
+      {
+        paId: 'a',
+        status: 'DRAFT',
+        source: 'MANUAL',
+        overrideWeek: true,
+        overrideReason: 'Reviewed',
+      },
+    ]
+    workshops[1].locked = true
+    workshops[2].status = 'PUBLISHED'
+    workshops[3].status = 'COMPLETED'
+    workshops[4].status = 'CANCELLED'
+    const state = snapshot(workshops)
+    const before = JSON.stringify(state)
+    const output = matchWorkshops(
+      state,
+      workshops.map((item) => item.id)
+    )
+    expect(output.filter((proposal) => proposal.protected)).toHaveLength(5)
+    expect(JSON.stringify(state)).toBe(before)
+    expect(output[0]).toHaveProperty('automaticOutcome')
+  })
+
+  it('returns a valid partial plan with a proved automatic shortage', () => {
+    const one = workshop('one')
+    const two = workshop('two', '2027-01-05')
+    const state = snapshot([one, two], ['a'])
+    const result = matchWorkshops(state, ['one', 'two'])
+    expect(result.flatMap((proposal) => proposal.paIds)).toHaveLength(1)
+    const unstaffed = result.find((proposal) => proposal.paIds.length === 0)!
+    expect(unstaffed.automaticOutcome).toBe('PROVEN_SHORTAGE')
+    expect(unstaffed.shortageWitness?.deficit).toBe(1)
+  })
+
+  it('fills every minimum before adding optional staffing', () => {
+    const first = workshop('first', '2027-01-04')
+    const second = workshop('second', '2027-01-11')
+    first.maxPAs = 2
+    const state = snapshot([first, second], ['a', 'b'])
+    const result = matchWorkshops(state, ['first', 'second'])
+    expect(result.find((proposal) => proposal.workshopSessionId === 'first')?.paIds).toHaveLength(2)
+    expect(result.find((proposal) => proposal.workshopSessionId === 'second')?.paIds).toHaveLength(
+      1
+    )
+  })
+
+  it('reuses a PA in the next Vancouver week but only once within a week', () => {
+    const monday = workshop('monday', '2027-01-04')
+    const friday = workshop('friday', '2027-01-08')
+    const nextMonday = workshop('next-monday', '2027-01-11')
+    const result = matchWorkshops(snapshot([monday, friday, nextMonday], ['a']), [
+      monday.id,
+      friday.id,
+      nextMonday.id,
+    ])
+    expect(result.flatMap((proposal) => proposal.paIds)).toHaveLength(2)
+    expect(result.find((proposal) => proposal.workshopSessionId === 'next-monday')?.paIds).toEqual([
+      'a',
+    ])
+  })
+
+  it('prefers completing one minimum of three over splitting four PAs two-and-two', () => {
+    const first = workshop('first', '2027-01-04')
+    const second = workshop('second', '2027-01-05')
+    first.minPAs = first.maxPAs = 3
+    second.minPAs = second.maxPAs = 3
+    const result = matchWorkshops(snapshot([first, second], ['a', 'b', 'c', 'd']), [
+      first.id,
+      second.id,
+    ])
+    expect(result.map((proposal) => proposal.paIds.length).sort()).toEqual([1, 3])
+  })
+
+  it('handles an enormous declared demand without expanding by demand', () => {
+    const target = workshop('huge')
+    target.minPAs = target.maxPAs = 2_147_483_647
+    const [proposal] = matchWorkshops(snapshot([target], ['a', 'b']), [target.id])
+    expect(proposal.paIds).toHaveLength(2)
+    expect(proposal.shortageWitness).toMatchObject({
+      requiredPlaces: 2_147_483_647,
+      filledPlaces: 2,
+    })
+    expect(proposal.diagnostics.edges).toBeLessThan(20)
+  })
+
+  it('round-trips a newly generated versioned plan through persisted-plan parsing', () => {
+    const target = workshop('target')
+    const plan = matchWorkshops(snapshot([target]), [target.id])
+    expect(matchPlanSchema.parse(JSON.parse(JSON.stringify(plan)))).toEqual(plan)
+  })
+
+  it('preserves covered sessions while reassigning capacity to reduce the remaining deficit', () => {
+    const minima = [3, 2, 3, 3, 2]
+    const allowed = [['a', 'c'], ['b', 'c'], ['a'], ['a', 'b', 'c'], ['a', 'b', 'c']]
+    const workshops = minima.map((minimum, index) => {
+      const item = workshop(`s${index}`, index % 2 ? '2027-01-11' : '2027-01-04', 540 + index * 60)
+      item.minPAs = item.maxPAs = minimum
+      return item
+    })
+    const state = snapshot(workshops, ['a', 'b', 'c'])
+    state.availabilityExceptions = workshops.flatMap((item, index) =>
+      state.pas
+        .filter((pa) => !allowed[index].includes(pa.id))
+        .map((pa) => ({
+          userId: pa.id,
+          date: item.scheduledStart,
+          kind: 'UNAVAILABLE' as const,
+          startMinute: 540 + index * 60,
+          endMinute: 600 + index * 60,
+        }))
+    )
+    const plan = matchWorkshops(
+      state,
+      workshops.map((item) => item.id)
+    )
+    const covered = plan.filter((proposal, index) => proposal.paIds.length >= minima[index]).length
+    const deficit = plan.reduce(
+      (sum, proposal, index) => sum + Math.max(0, minima[index] - proposal.paIds.length),
+      0
+    )
+    expect({ covered, deficit }).toEqual({ covered: 2, deficit: 7 })
   })
 })

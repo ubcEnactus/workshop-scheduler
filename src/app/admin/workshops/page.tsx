@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { FormError } from '@/components/form-error'
@@ -9,24 +10,36 @@ import {
   schedulingHref,
   type SchedulingContext,
 } from '@/lib/scheduling/navigation'
-import { formatInstantRange, vancouverMonthBounds } from '@/lib/time'
+import {
+  formatInstantRange,
+  vancouverDateKey,
+  vancouverMinuteOfDay,
+  vancouverMonthBounds,
+} from '@/lib/time'
 import { loadSchedule } from '@/lib/scheduling/store'
-import { eligibility, staffingProblems, workload } from '@/lib/scheduling/eligibility'
+import {
+  assessAssignment,
+  assignmentPolicyHash,
+  staffingProblems,
+} from '@/lib/scheduling/eligibility'
 import { scheduleHash } from '@/lib/scheduling/matching-preview'
 import { matchesScheduleView } from '@/lib/scheduling/workspace'
 import { PageHeader } from '@/components/ui/page-header'
 import { buttonClasses } from '@/components/ui/button'
+import { deliveryWindowLabel } from '@/lib/scheduling/delivery-windows'
+import { ClearSavedPlanningChoices } from '@/components/clear-saved-planning-choices'
+import { workshopRecordReference } from '@/app/admin/workshop-definitions/workshop-reference'
 
 export default async function WorkshopsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | undefined>>
 }) {
-  await requireRole('ADMIN')
+  const actor = await requireRole('ADMIN')
   const query = await searchParams
-  const [allClasses, schools, snapshot] = await Promise.all([
+  const [allClasses, schools] = await Promise.all([
     prisma.classSection.findMany({
-      where: { school: { deletedAt: null }, teacher: { role: 'TEACHER', deletedAt: null } },
+      where: { school: { deletedAt: null } },
       include: {
         school: true,
         teacher: true,
@@ -35,18 +48,46 @@ export default async function WorkshopsPage({
       orderBy: { name: 'asc' },
     }),
     prisma.school.findMany({ where: { deletedAt: null }, orderBy: { name: 'asc' } }),
-    loadSchedule(prisma),
   ])
-  const classes = allClasses.filter((c) => c.teacher.schoolId === c.schoolId)
+  const classes = allClasses
   const { context, warning } = normalizeSchedulingContext(query, classes, schools)
+  const workshop = context.workshopDefinitionId
+    ? await prisma.workshopDefinition.findUnique({ where: { id: context.workshopDefinitionId } })
+    : null
+  if (context.workshopDefinitionId && !workshop) notFound()
+  const batchSessions =
+    context.batch && workshop
+      ? await prisma.workshopSession.findMany({
+          where: { batchId: context.batch, classWorkshop: { workshopDefinitionId: workshop.id } },
+          select: {
+            id: true,
+            classWorkshopId: true,
+            scheduledStart: true,
+            status: true,
+            assignments: { select: { id: true } },
+          },
+        })
+      : null
+  const snapshot = await loadSchedule(
+    prisma,
+    workshop
+      ? { kind: 'run', workshopDefinitionId: workshop.id }
+      : {
+          kind: 'month',
+          month: context.month,
+          classSectionIds: context.classSectionId ? [context.classSectionId] : undefined,
+        }
+  )
   const { start, end } = vancouverMonthBounds(context.month)
   const workshops = snapshot.workshops
     .filter(
       (w) =>
         w.activeClass &&
         classes.some((c) => c.id === w.classSectionId) &&
-        w.scheduledStart >= start &&
-        w.scheduledStart < end &&
+        (workshop
+          ? w.workshopDefinitionId === workshop.id
+          : w.scheduledStart >= start && w.scheduledStart < end) &&
+        (!batchSessions || batchSessions.some((session) => session.id === w.id)) &&
         (!context.schoolId || w.schoolId === context.schoolId) &&
         (!context.classSectionId || w.classSectionId === context.classSectionId)
     )
@@ -59,6 +100,8 @@ export default async function WorkshopsPage({
       id: w.id,
       version: w.version,
       name: cls.name,
+      definitionTitle: w.definitionTitle,
+      workshopDefinitionId: w.workshopDefinitionId,
       school: cls.school.name,
       date: formatInstantRange(w.scheduledStart, w.scheduledEnd),
       status: w.status,
@@ -69,6 +112,11 @@ export default async function WorkshopsPage({
       problems: staffingProblems(snapshot, w),
       assignments: w.assignments.map((a) => ({
         id: a.paId,
+        availabilityWarnings: assessAssignment(snapshot, w, a.paId).availabilityWarnings,
+        warnings: assessAssignment(snapshot, w, a.paId).manualWarnings.map(({ code, message }) => ({
+          code,
+          message,
+        })),
         name:
           snapshot.pas.find((p) => p.id === a.paId)?.name ??
           snapshot.pas.find((p) => p.id === a.paId)?.email ??
@@ -77,14 +125,22 @@ export default async function WorkshopsPage({
       candidates: snapshot.pas
         .filter((p) => !w.assignments.some((a) => a.paId === p.id))
         .map((p) => {
-          const quota = snapshot.quotas.find((q) => q.paId === p.id && q.month === context.month)
+          const assessment = assessAssignment(snapshot, w, p.id)
           return {
             id: p.id,
             name: p.name ?? p.email,
-            reasons: eligibility(snapshot, w, p.id),
-            remaining: quota
-              ? Math.max(0, quota.quota - workload(snapshot, p.id, context.month))
-              : null,
+            hardErrors: assessment.hardErrors,
+            availabilityWarnings: assessment.availabilityWarnings,
+            warnings: assessment.manualWarnings.map((warning) => ({
+              code: warning.code,
+              message: warning.message,
+              commitments: warning.commitments.map(
+                (item) =>
+                  `${item.schoolName ?? 'School'} · ${formatInstantRange(item.scheduledStart, item.scheduledEnd)} · ${item.minutesBetween} minutes between sessions`
+              ),
+            })),
+            totalAssignments: assessment.totalAssignments,
+            expectedPolicyHash: assignmentPolicyHash(w, p.id, assessment),
           }
         }),
     }
@@ -100,33 +156,98 @@ export default async function WorkshopsPage({
   return (
     <main className="page-content">
       <PageHeader
-        eyebrow="Schedule workspace"
-        title="Workshops"
-        description={'Plan, staff and publish workshops for ' + context.month + '.'}
+        eyebrow={workshop ? 'Workshop schedule' : 'Across workshops'}
+        title={workshop ? workshop.title : 'Calendar'}
+        description={
+          workshop
+            ? `${deliveryWindowLabel(workshop)} · Record ${workshopRecordReference(workshop.id)} · All saved dates, including approved dates outside the window.`
+            : 'View, staff and publish teacher sessions for ' + context.month + '.'
+        }
         actions={
           <>
             <Link
-              href={schedulingHref('/admin/workshops/new', context)}
+              href={
+                workshop
+                  ? `/admin/workshop-definitions/${workshop.id}`
+                  : '/admin/workshop-definitions'
+              }
               className={buttonClasses()}
             >
-              Book workshop
+              {workshop ? 'Workshop overview' : 'Open a workshop'}
             </Link>
             <Link
               href={schedulingHref('/admin/workshops/plan', context)}
               className={buttonClasses({ variant: 'secondary' })}
             >
-              Plan monthly workshops
+              Choose teacher dates
             </Link>
             <Link
               href={schedulingHref('/admin/workshops/match', context)}
               className={buttonClasses({ variant: 'secondary' })}
             >
-              Assign PAs automatically
+              {context.batch ? 'Assign PAs to these sessions' : 'Assign PAs'}
+            </Link>
+            <Link
+              href={schedulingHref('/admin/workshops/new', context)}
+              className={buttonClasses({ variant: 'ghost' })}
+            >
+              Schedule a confirmed teacher session
             </Link>
           </>
         }
       />
       <FormError message={query.error ?? warning} />
+      {query.created && workshop && batchSessions && (
+        <ClearSavedPlanningChoices
+          storageKey={`workshop-planning:${actor.id}:${workshop.id}`}
+          savedChoices={batchSessions
+            .filter((session) => session.status !== 'CANCELLED')
+            .map((session) => {
+              const minute = vancouverMinuteOfDay(session.scheduledStart)
+              return {
+                classWorkshopId: session.classWorkshopId,
+                date: vancouverDateKey(session.scheduledStart),
+                startTime: `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`,
+              }
+            })}
+        />
+      )}
+      {query.created && batchSessions && batchSessions.length > 0 && (
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950"
+        >
+          {batchSessions.length} teacher session{batchSessions.length === 1 ? '' : 's'} saved as a
+          draft.{' '}
+          {batchSessions.every((session) => session.assignments.length === 0)
+            ? 'No PAs assigned yet.'
+            : 'Review current PA assignments below.'}{' '}
+          <Link
+            className="font-semibold underline"
+            href={schedulingHref('/admin/workshops/match', context)}
+          >
+            Assign PAs to these sessions
+          </Link>
+          .
+        </div>
+      )}
+      {query.matched === '1' && (
+        <p role="status" className="rounded-lg bg-emerald-50 p-4 text-emerald-950">
+          Draft PA assignments saved. Review each teacher session before publishing. No email has
+          been sent.
+        </p>
+      )}
+      {workshop && context.batch && (
+        <p className="text-sm">
+          Showing {batchSessions?.length ?? 0} teacher sessions from this saved batch.{' '}
+          <Link
+            className="underline"
+            href={schedulingHref('/admin/workshops', { ...context, batch: undefined })}
+          >
+            Show the full workshop schedule
+          </Link>
+        </p>
+      )}
       <ScheduleToolbar context={context} schools={schools} classes={classes} />
       <nav aria-label="Schedule views" className="flex flex-wrap gap-2">
         {views.map((v) => (
@@ -149,7 +270,7 @@ export default async function WorkshopsPage({
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
         <p className="text-slate-600">Select drafts to review publication together.</p>
         <Link className="font-semibold underline" href={schedulingHref('/admin/staffing', context)}>
-          PA quotas and assignment gap
+          PA availability & workload
         </Link>
       </div>
       <WorkspaceSchedule

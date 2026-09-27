@@ -1,40 +1,33 @@
 import { z } from 'zod'
-import { monthSchema, workshopSchema, clockMinutes } from './workshops'
-const slotSchema = z
-  .object({
-    classSectionId: z.string().min(1),
-    date: z.string(),
-    startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-    durationMinutes: z.coerce.number().int().min(1).max(1440),
-    minPAs: z.coerce.number().int().min(1),
-    maxPAs: z.coerce.number().int().min(1),
-  })
-  .transform((data, ctx) => {
-    const end = clockMinutes(data.startTime) + data.durationMinutes
-    const parsed = workshopSchema.safeParse({
-      ...data,
-      endTime:
-        String(Math.floor(end / 60)).padStart(2, '0') + ':' + String(end % 60).padStart(2, '0'),
-    })
-    if (!parsed.success) {
-      for (const issue of parsed.error.issues)
-        ctx.addIssue({ code: 'custom', message: issue.message, path: issue.path })
-      return z.NEVER
-    }
-    return parsed.data
-  })
+import { isCalendarDate } from '@/lib/time'
+
+const slotSchema = z.object({
+  classWorkshopId: z.string().min(1).max(200),
+  date: z.string().refine(isCalendarDate, 'Choose a valid candidate date.'),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):(?:00|15|30|45)$/, 'Use a 15-minute start time.'),
+})
 export const batchSchema = z
   .object({
     requestKey: z.uuid(),
-    month: monthSchema,
-    slots: z.array(slotSchema).min(1, 'Select classes with missing workshops.').max(200),
+    workshopDefinitionId: z.string().min(1).max(200),
+    expectedDefinitionRevision: z.coerce.number().int().min(0),
+    expectedScheduleHash: z.string().length(64).optional(),
+    destination: z.enum(['plan', 'staff']).default('staff'),
+    returnWeek: z.string().refine(isCalendarDate).optional(),
+    returnClassSectionId: z.string().min(1).max(200).optional(),
+    mode: z.literal('IN_PERSON').default('IN_PERSON'),
+    location: z.string().trim().max(500).default(''),
+    notes: z.string().trim().max(5000).default(''),
+    participantInstructions: z.string().trim().max(5000).default(''),
+    slots: z.array(slotSchema).min(1, 'Select at least one candidate time.').max(200),
   })
   .refine(
-    (data) => data.slots.every((s) => s.date.slice(0, 7) === data.month),
-    'All dates must belong to the selected Vancouver month.'
+    (data) => new Set(data.slots.map((s) => s.classWorkshopId)).size === data.slots.length,
+    'Select only one candidate for each teacher workshop.'
   )
 export const planningQuerySchema = z.object({
-  month: monthSchema,
-  classId: z.array(z.string().min(1)).max(200),
+  workshopDefinitionId: z.string().min(1).max(200).optional(),
   preview: z.boolean(),
 })
+
+export type PlanningBatchInput = z.infer<typeof batchSchema>

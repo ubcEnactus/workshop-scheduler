@@ -6,12 +6,13 @@ import { Prisma } from '@prisma/client'
 import { requireRole } from '@/lib/auth'
 import { readSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
 import { parsePlanningReturn, preservePlanningReturn } from '@/lib/scheduling/planning-return'
-import { scheduleTransaction } from '@/lib/scheduling/store'
+import { scheduleTransaction, SchedulingError } from '@/lib/scheduling/store'
 import {
   classMeetingIdSchema,
   classMeetingSchema,
   classSectionIdSchema,
   classSectionSchema,
+  classLifecycleSchema,
 } from '@/lib/schemas/classes'
 
 function timeToMinutes(time: unknown): number {
@@ -35,6 +36,17 @@ function classEditError(id: string, formData: FormData, message: string) {
   return `${target}${target.includes('?') ? '&' : '?'}error=${encodeURIComponent(message)}`
 }
 
+function classPageTarget(id: string, formData: FormData) {
+  return schedulingHref(`/admin/classes/${id}`, {
+    ...readSchedulingContext(formData),
+    classSectionId: id,
+  })
+}
+
+function withQuery(path: string, key: string, value: string) {
+  return `${path}${path.includes('?') ? '&' : '?'}${key}=${encodeURIComponent(value)}`
+}
+
 async function getTeacherSchoolId(
   tx: Prisma.TransactionClient,
   teacherId: string
@@ -53,6 +65,7 @@ async function getTeacherSchoolId(
 
 export async function createClassSection(formData: FormData) {
   await requireRole('ADMIN')
+  const directoryTarget = schedulingHref('/admin/classes', readSchedulingContext(formData))
   const parsed = classSectionSchema.safeParse({
     name: formData.get('name'),
     subject: formData.get('subject') || undefined,
@@ -64,21 +77,41 @@ export async function createClassSection(formData: FormData) {
     defaultMaxPAs: formData.get('defaultMaxPAs') ?? undefined,
   })
   if (!parsed.success) {
-    redirect(`/admin/classes?error=${encodeURIComponent(parsed.error.issues[0].message)}`)
+    redirect(withQuery(directoryTarget, 'error', parsed.error.issues[0].message))
   }
+  let createdId = ''
   try {
-    await scheduleTransaction(async (tx) => {
+    createdId = await scheduleTransaction(async (tx) => {
       const schoolId = await getTeacherSchoolId(tx, parsed.data.teacherId)
-      if (!schoolId) redirect('/admin/classes?error=Select+an+active+teacher+with+a+school.')
-      await tx.classSection.create({ data: { ...parsed.data, schoolId } })
+      if (!schoolId) throw new SchedulingError('Select an active teacher with a school.')
+      const existing = await tx.classSection.findFirst({
+        where: { teacherId: parsed.data.teacherId },
+      })
+      if (existing) return existing.id
+      const teacher = await tx.user.findFirstOrThrow({
+        where: { id: parsed.data.teacherId, deletedAt: null, role: 'TEACHER' },
+      })
+      const created = await tx.classSection.create({
+        data: { ...parsed.data, name: teacher.name ?? teacher.email, schoolId },
+      })
+      return created.id
     })
   } catch (error) {
+    if (error instanceof SchedulingError)
+      redirect(withQuery(directoryTarget, 'error', error.message))
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
-      redirect('/admin/classes?error=Records+changed.+Reload+and+try+again.')
+      redirect(withQuery(directoryTarget, 'error', 'Records changed. Reload and try again.'))
     }
     throw error
   }
   revalidatePath('/admin/classes')
+  redirect(
+    schedulingHref(
+      `/admin/classes/${createdId}`,
+      { ...readSchedulingContext(formData), classSectionId: createdId },
+      { saved: 'created' }
+    ) + '#availability'
+  )
 }
 
 export async function updateClassSection(formData: FormData) {
@@ -108,19 +141,17 @@ export async function updateClassSection(formData: FormData) {
       if (!schoolId) return 'Select an active teacher with a school.'
       const cls = await tx.classSection.findUnique({
         where: { id: id.data.id },
-        include: { _count: { select: { workshops: true } } },
       })
-      if (!cls) return 'Unknown class.'
-      if (
-        cls._count.workshops > 0 &&
-        (cls.teacherId !== parsed.data.teacherId || cls.schoolId !== schoolId)
-      ) {
-        return 'This class has workshop history. Create a new class for a different teacher or school.'
-      }
+      if (!cls) return 'Unknown teacher.'
+      if (cls.teacherId !== parsed.data.teacherId)
+        return 'Each teacher owns their schedule. Enroll the other teacher separately.'
+      if (cls.schoolId !== schoolId)
+        return 'Moving a teacher to another school is a separate operation.'
       await tx.classSection.update({
         where: { id: cls.id },
         data: {
           ...parsed.data,
+          name: cls.name,
           subject: parsed.data.subject ?? null,
           grade: parsed.data.grade ?? null,
           schoolId,
@@ -138,9 +169,7 @@ export async function updateClassSection(formData: FormData) {
   redirect(
     parsePlanningReturn(formData)
       ? classEditTarget(id.data.id, formData)
-      : formData.has('month')
-        ? schedulingHref('/admin/classes', readSchedulingContext(formData))
-        : '/admin/classes'
+      : withQuery(classPageTarget(id.data.id, formData), 'saved', 'details')
   )
 }
 
@@ -151,20 +180,61 @@ export async function deleteClassSection(formData: FormData) {
     redirect('/admin/classes?error=Unknown+class.')
   }
 
+  redirect(
+    withQuery(
+      classPageTarget(id.data.id, formData),
+      'error',
+      'This schedule belongs to its teacher. Deactivate the teacher to preserve workshop history.'
+    )
+  )
+}
+
+export async function updateClassLifecycle(formData: FormData) {
+  await requireRole('ADMIN')
+  const parsed = classLifecycleSchema.safeParse(Object.fromEntries(formData))
+  if (!parsed.success) redirect('/admin/classes?error=Unknown+class+lifecycle+action.')
+  const target = classPageTarget(parsed.data.id, formData)
   try {
-    await scheduleTransaction((tx) => tx.classSection.delete({ where: { id: id.data.id } }))
-  } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-      redirect(
-        '/admin/classes?error=' +
-          encodeURIComponent(
-            "This class has workshop history and can't be deleted. Keep it for now."
-          )
+    await scheduleTransaction(async (tx) => {
+      const cls = await tx.classSection.findFirst({
+        where: { id: parsed.data.id, school: { deletedAt: null } },
+        include: {
+          classWorkshops: {
+            include: {
+              sessions: {
+                where: {
+                  status: { in: ['DRAFT', 'PUBLISHED'] },
+                  scheduledEnd: { gte: new Date() },
+                },
+                select: { id: true },
+              },
+            },
+          },
+        },
+      })
+      if (!cls) throw new SchedulingError('Unknown teacher.')
+      if (cls.updatedAt.toISOString() !== parsed.data.expectedUpdatedAt)
+        throw new SchedulingError('This teacher changed. Reload and review its status again.')
+      if (parsed.data.action === 'REACTIVATE') {
+        await tx.classSection.update({ where: { id: cls.id }, data: { archivedAt: null } })
+        return
+      }
+      const futureSessions = cls.classWorkshops.flatMap((run) => run.sessions)
+      const unresolved = cls.classWorkshops.filter(
+        (run) => !['COMPLETED', 'WAIVED'].includes(run.status)
       )
-    }
-    throw err
+      if (futureSessions.length || unresolved.length)
+        throw new SchedulingError(
+          'Resolve future sessions, remaining workshop obligations before deactivating this teacher. Cancel future sessions, and complete or mark each outstanding delivery not required.'
+        )
+      await tx.classSection.update({ where: { id: cls.id }, data: { archivedAt: new Date() } })
+    })
+  } catch (error) {
+    if (error instanceof SchedulingError) redirect(withQuery(target, 'error', error.message))
+    throw error
   }
-  revalidatePath('/admin/classes')
+  revalidatePath('/admin', 'layout')
+  redirect(withQuery(target, 'saved', 'lifecycle'))
 }
 
 export async function addMeeting(formData: FormData) {

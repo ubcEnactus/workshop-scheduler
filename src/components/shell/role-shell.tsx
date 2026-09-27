@@ -1,45 +1,51 @@
 'use client'
-import Link from 'next/link'
+import Link, { useLinkStatus } from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react'
 import {
   CalendarDays,
   LayoutDashboard,
   School,
   BookOpen,
   UserRound,
-  Settings2,
-  CalendarPlus,
-  Sparkles,
   LogOut,
   Menu,
   X,
   ChevronRight,
   Clock3,
+  LoaderCircle,
 } from 'lucide-react'
 
 type Role = 'ADMIN' | 'PA' | 'TEACHER'
 const navigation = {
   ADMIN: [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, group: 'Overview' },
-    { href: '/admin/workshops', label: 'Workshops', icon: CalendarDays, group: 'Scheduling' },
+    { href: '/admin', label: 'Overview', icon: LayoutDashboard, group: 'Workspace' },
     {
-      href: '/admin/workshops/plan',
-      label: 'Plan a month',
-      icon: CalendarPlus,
-      group: 'Scheduling',
-    },
-    { href: '/admin/workshops/match', label: 'Assign PAs', icon: Sparkles, group: 'Scheduling' },
-    { href: '/admin/staffing', label: 'Quotas & settings', icon: Settings2, group: 'Scheduling' },
-    { href: '/admin/schools', label: 'Schools', icon: School, group: 'People & places' },
-    { href: '/admin/pas', label: 'Program assistants', icon: UserRound, group: 'People & places' },
-    {
-      href: '/admin/classes',
-      label: 'Classes & teachers',
+      href: '/admin/workshop-definitions',
+      label: 'Workshops',
       icon: BookOpen,
-      group: 'People & places',
+      group: 'Workspace',
     },
+    {
+      href: '/admin/workshops',
+      label: 'Calendar',
+      icon: CalendarDays,
+      group: 'Workspace',
+    },
+    {
+      href: '/admin/teachers',
+      label: 'Schools & teachers',
+      icon: School,
+      group: 'Manage',
+    },
+    { href: '/admin/pas', label: 'PAs', icon: UserRound, group: 'Manage' },
   ],
   PA: [
     { href: '/pa', label: 'My workshops', icon: CalendarDays, group: 'My workspace' },
@@ -50,6 +56,26 @@ const navigation = {
   ],
 }
 const roleLabels = { ADMIN: 'Administrator', PA: 'Program assistant', TEACHER: 'Teacher' }
+
+function SidebarLinkContent({
+  label,
+  Icon,
+}: {
+  label: string
+  Icon: (typeof navigation.ADMIN)[number]['icon']
+}) {
+  const { pending } = useLinkStatus()
+  return (
+    <>
+      <Icon aria-hidden="true" className="size-[18px] shrink-0" />
+      <span>{label}</span>
+      {pending && (
+        <LoaderCircle aria-hidden="true" className="ml-auto size-4 shrink-0 animate-spin" />
+      )}
+    </>
+  )
+}
+
 export function RoleShell({
   role,
   displayName,
@@ -64,9 +90,29 @@ export function RoleShell({
   const pathname = usePathname()
   const search = useSearchParams()
   const context = parseSchedulingContext(Object.fromEntries(search))
+  const sidebarHref = (href: string) =>
+    role === 'ADMIN'
+      ? schedulingHref(
+          href,
+          href === '/admin/workshops'
+            ? {
+                ...context,
+                workshopDefinitionId: undefined,
+                batch: undefined,
+                week: undefined,
+              }
+            : context
+        )
+      : href
   const dialog = useRef<HTMLDialogElement>(null)
   const menuButton = useRef<HTMLButtonElement>(null)
   const [open, setOpen] = useState(false)
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    href: string
+    label: string
+  } | null>(null)
+  const locationKey = `${pathname}?${search.toString()}`
+  useEffect(() => setPendingNavigation(null), [locationKey])
   useEffect(() => {
     const desktop = window.matchMedia('(min-width: 1024px)')
     const closeOnDesktop = () => {
@@ -76,15 +122,37 @@ export function RoleShell({
     return () => desktop.removeEventListener('change', closeOnDesktop)
   }, [])
   const items = navigation[role]
+  const workshopContext = search.has('workshopDefinitionId')
+  const adminActiveHref =
+    role !== 'ADMIN'
+      ? null
+      : pathname.startsWith('/admin/workshop-definitions') ||
+          pathname.startsWith('/admin/class-workshops') ||
+          pathname.startsWith('/admin/workshops/plan') ||
+          (workshopContext &&
+            (pathname === '/admin/workshops' || pathname.startsWith('/admin/workshops/match')))
+        ? '/admin/workshop-definitions'
+        : pathname.startsWith('/admin/classes') ||
+            pathname.startsWith('/admin/schools') ||
+            pathname.startsWith('/admin/teachers')
+          ? '/admin/teachers'
+          : pathname.startsWith('/admin/pas') ||
+              pathname.startsWith('/admin/staffing') ||
+              pathname.startsWith('/admin/workshops/match')
+            ? '/admin/pas'
+            : pathname.startsWith('/admin/workshops')
+              ? '/admin/workshops'
+              : '/admin'
   const active =
+    (adminActiveHref ? items.find((item) => item.href === adminActiveHref) : undefined) ??
     items
       .filter(
         (item) =>
           pathname === item.href ||
-          (item.href !== items[0].href && pathname.startsWith(item.href + '/')) ||
-          (item.href === '/admin/classes' && pathname.startsWith('/admin/teachers'))
+          (item.href !== items[0].href && pathname.startsWith(item.href + '/'))
       )
-      .sort((a, b) => b.href.length - a.href.length)[0] ?? items[0]
+      .sort((a, b) => b.href.length - a.href.length)[0] ??
+    items[0]
   const initials = displayName
     .trim()
     .split(/\s+/)
@@ -94,6 +162,35 @@ export function RoleShell({
     .toUpperCase()
   function closeMenu() {
     dialog.current?.close()
+  }
+  function startNavigation(href: string, label: string) {
+    const next = new URL(href, window.location.href)
+    if (
+      next.origin !== window.location.origin ||
+      (next.pathname === window.location.pathname && next.search === window.location.search)
+    )
+      return
+    setPendingNavigation({ href: next.pathname + next.search, label })
+  }
+  function captureNavigationIntent(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return
+    const target = event.target
+    if (!(target instanceof Element)) return
+    const anchor = target.closest<HTMLAnchorElement>('a[href]')
+    if (
+      !anchor ||
+      anchor.hasAttribute('download') ||
+      (anchor.target && anchor.target !== '_self') ||
+      anchor.dataset.navigationFeedback === 'off'
+    )
+      return
+    const next = new URL(anchor.href, window.location.href)
+    if (next.origin !== window.location.origin) return
+    if (next.pathname === window.location.pathname && next.search === window.location.search) return
+    const label =
+      anchor.dataset.navigationLabel ?? anchor.textContent?.replace(/\s+/g, ' ').trim() ?? 'page'
+    startNavigation(next.pathname + next.search, label.slice(0, 80))
   }
   const sidebar = (mobile = false) => (
     <div className="flex min-h-full flex-col">
@@ -138,8 +235,12 @@ export function RoleShell({
                 .map((item) => (
                   <li key={item.href}>
                     <Link
-                      href={role === 'ADMIN' ? schedulingHref(item.href, context) : item.href}
-                      onClick={mobile ? closeMenu : undefined}
+                      href={sidebarHref(item.href)}
+                      onNavigate={() => {
+                        if (mobile) closeMenu()
+                        startNavigation(sidebarHref(item.href), item.label)
+                      }}
+                      data-navigation-label={item.label}
                       aria-current={active.href === item.href ? 'page' : undefined}
                       className={
                         'flex min-h-10 items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors ' +
@@ -148,8 +249,7 @@ export function RoleShell({
                           : 'text-slate-300 hover:bg-white/10 hover:text-white')
                       }
                     >
-                      <item.icon aria-hidden="true" className="size-[18px] shrink-0" />
-                      {item.label}
+                      <SidebarLinkContent label={item.label} Icon={item.icon} />
                     </Link>
                   </li>
                 ))}
@@ -177,7 +277,10 @@ export function RoleShell({
     </div>
   )
   return (
-    <div className="app-shell min-h-screen bg-[#f5f6f9] text-slate-900">
+    <div
+      className="app-shell min-h-screen bg-[#f5f6f9] text-slate-900"
+      onClickCapture={captureNavigationIntent}
+    >
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
@@ -234,7 +337,24 @@ export function RoleShell({
             </div>
           </div>
         </header>
-        <div id="main-content" tabIndex={-1} className="min-w-0 outline-none">
+        {pendingNavigation && (
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-navigation-pending={pendingNavigation.href}
+            className="flex min-h-10 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-950 sm:px-8"
+          >
+            <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin" />
+            Loading {pendingNavigation.label}…
+          </div>
+        )}
+        <div
+          id="main-content"
+          tabIndex={-1}
+          aria-busy={pendingNavigation ? 'true' : 'false'}
+          className="min-w-0 outline-none"
+        >
           {children}
         </div>
         <footer className="mx-auto flex max-w-[1480px] flex-wrap justify-between gap-2 px-4 pb-6 text-[11px] text-slate-500 sm:px-8">

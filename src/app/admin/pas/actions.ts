@@ -77,7 +77,7 @@ export async function softDeletePA(formData: FormData) {
     const futureAssignment = await tx.assignment.findFirst({
       where: {
         paId: parsed.data.id,
-        workshop: {
+        workshopSession: {
           scheduledStart: { gte: new Date() },
           status: { notIn: ['CANCELLED', 'COMPLETED'] },
         },

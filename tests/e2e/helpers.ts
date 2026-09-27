@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 export async function requestLink(page: Page, email: string) {
   await page.goto('/login')
   await page.getByLabel('Email', { exact: true }).fill(email)
-  await page.getByRole('button', { name: 'Send magic link' }).click()
+  await page.getByRole('button', { name: 'Send sign-in link' }).click()
   await expect(page).toHaveURL(/\/login\/check-email/)
   let link = ''
   await expect

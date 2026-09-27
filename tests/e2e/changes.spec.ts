@@ -1,3 +1,4 @@
+import { createSessionFixture, addSessionCandidateFixture } from '../fixtures'
 import { test, expect } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { resetFixtures } from '../fixtures'
@@ -14,14 +15,11 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
   })
   await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
   for (const paId of [f.pa.id, replacement.id]) {
-    await prisma.monthlyPAQuota.createMany({
-      data: ['2027-01', '2027-02'].map((month) => ({ paId, month, quota: 4 })),
-    })
     await prisma.availability.createMany({
-      data: [600, 630].map((startMin) => ({ userId: paId, dayOfWeek: 0, startMin })),
+      data: [600, 615, 630, 645].map((startMin) => ({ userId: paId, dayOfWeek: 0, startMin })),
     })
   }
-  const w = await prisma.workshop.create({
+  const w = await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       status: 'PUBLISHED',
@@ -33,7 +31,8 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
       assignments: { create: { paId: f.pa.id, status: 'PUBLISHED' } },
     },
   })
-  const past = await prisma.workshop.create({
+  await addSessionCandidateFixture(w.id, '2027-02-01')
+  const past = await createSessionFixture({
     data: {
       classSectionId: f.sibling.id,
       status: 'PUBLISHED',
@@ -48,8 +47,13 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
     paPage = await paContext.newPage()
   await login(paPage, f.pa.email, 'pa')
   await paPage.getByRole('link', { name: 'Edit availability' }).click()
-  await paPage.getByText('Edit individual half-hour slots', { exact: true }).click()
-  for (const label of ['Monday 10:00–10:30 AM', 'Monday 10:30–11:00 AM']) {
+  await paPage.getByText('Edit individual 15-minute slots', { exact: true }).click()
+  for (const label of [
+    'Monday 10:00–10:15 AM',
+    'Monday 10:15–10:30 AM',
+    'Monday 10:30–10:45 AM',
+    'Monday 10:45–11:00 AM',
+  ]) {
     await paPage.getByRole('checkbox', { name: label, exact: true }).uncheck()
   }
   await paPage.getByRole('button', { name: 'Save availability' }).click()
@@ -59,27 +63,29 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
   await login(page, f.admin.email, 'admin')
   await page.goto('/admin/workshops/' + w.id)
   await page.getByText('Replace a PA', { exact: true }).click()
-  await page.getByLabel('Replacement PA', { exact: true }).selectOption(replacement.id)
+  await page
+    .getByRole('combobox', { name: 'Replacement PA', exact: true })
+    .selectOption(replacement.id)
   await page.locator('#REPLACE-reason').fill('Original PA unavailable')
   await page.getByRole('button', { name: 'Review replacement' }).click()
   await expect(page.getByRole('heading', { name: 'Review workshop change' })).toBeVisible()
   await paPage.reload()
   await expect(paPage.getByText('Fixture Biology', { exact: true })).toBeVisible()
-  expect((await prisma.assignment.findFirstOrThrow({ where: { workshopId: w.id } })).paId).toBe(
-    f.pa.id
-  )
+  expect(
+    (await prisma.assignment.findFirstOrThrow({ where: { workshopSessionId: w.id } })).paId
+  ).toBe(f.pa.id)
   await page.getByRole('button', { name: 'Apply workshop change' }).click()
   await expect(page).toHaveURL(/changed=1/)
   await paPage.reload()
-  await expect(paPage.getByText(/Fixture Biology: Your assignment was replaced/)).toBeVisible()
+  await expect(paPage.getByText(/Fixture Biology: Your assignment was removed/)).toBeVisible()
   await expect(paPage.getByText('Fixture Biology', { exact: true })).toHaveCount(0)
   await page.getByText('Reschedule workshop', { exact: true }).click()
   await page.getByLabel('New date', { exact: true }).fill('2027-02-01')
   await page.locator('#RESCHEDULE-reason').fill('School requested a new date')
   await page.getByRole('button', { name: 'Review reschedule' }).click()
-  expect((await prisma.workshop.findUniqueOrThrow({ where: { id: w.id } })).scheduledStart).toEqual(
-    w.scheduledStart
-  )
+  expect(
+    (await prisma.workshopSession.findUniqueOrThrow({ where: { id: w.id } })).scheduledStart
+  ).toEqual(w.scheduledStart)
   await page.getByRole('button', { name: 'Apply workshop change' }).click()
   await expect(page).toHaveURL(/changed=1/)
   await page.setViewportSize({ width: 390, height: 844 })
@@ -108,8 +114,12 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
   await expect(teacherPage.getByText('Status: cancelled', { exact: true })).toBeVisible()
   await expect(teacherPage.getByText('Status: completed', { exact: true })).toBeVisible()
   await expect(
-    teacherPage.getByText('Latest change: School closure', { exact: true })
+    teacherPage.getByText('Latest change: This workshop was cancelled.', { exact: true })
   ).toBeVisible()
+  await expect(
+    teacherPage.getByText('Latest change: This workshop was marked completed.', { exact: true })
+  ).toBeVisible()
+  await expect(teacherPage.getByText('School closure', { exact: true })).toHaveCount(0)
   const other = await browser.newContext(),
     otherPage = await other.newPage()
   await login(otherPage, f.otherTeacher.email, 'teacher')

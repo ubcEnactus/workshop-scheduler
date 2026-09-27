@@ -15,7 +15,7 @@ export function ContextMonth({
   const router = useRouter()
   const [pending, start] = useTransition()
   return (
-    <div className="flex flex-wrap items-end gap-3">
+    <div className="flex flex-wrap items-end gap-3" aria-busy={pending}>
       <label className="field max-w-xs">
         {label}
         <input
@@ -33,7 +33,7 @@ export function ContextMonth({
           }}
         />
       </label>
-      <span role={pending ? 'status' : undefined} className="text-xs text-slate-500">
+      <span role="status" aria-live="polite" className="text-xs text-slate-500">
         {pending ? 'Loading month…' : ''}
       </span>
     </div>

@@ -1,3 +1,4 @@
+import { createSessionFixture } from '../fixtures'
 import { test, expect } from '@playwright/test'
 import { prisma } from '../../src/lib/db'
 import { resetFixtures } from '../fixtures'
@@ -12,7 +13,7 @@ test('published change review and apply preserve the originating schedule contex
   page,
 }) => {
   const fixture = await resetFixtures()
-  const workshop = await prisma.workshop.create({
+  const workshop = await createSessionFixture({
     data: {
       classSectionId: fixture.cls.id,
       scheduledStart: vancouverToUtc('2027-01-04', 600),
@@ -30,6 +31,10 @@ test('published change review and apply preserve the originating schedule contex
     classSectionId: fixture.cls.id,
     view: 'published',
   })
+  const { workshopDefinitionId } = await prisma.classWorkshop.findUniqueOrThrow({
+    where: { id: workshop.classWorkshopId },
+    select: { workshopDefinitionId: true },
+  })
 
   await login(page, fixture.admin.email, 'admin')
   await page.goto(`/admin/workshops/${workshop.id}?${context}`)
@@ -40,15 +45,26 @@ test('published change review and apply preserve the originating schedule contex
   await page.getByText('Cancel workshop', { exact: true }).click()
   await cancellation.getByLabel('Reason').fill('School closure')
   await cancellation.getByRole('button', { name: 'Review cancellation' }).click()
-  await expect(page).toHaveURL((url) =>
-    [...context].every(([key, value]) => url.searchParams.get(key) === value)
+  await expect(page).toHaveURL(
+    (url) =>
+      /^\/admin\/workshops\/changes\/[^/]+$/.test(url.pathname) &&
+      [...context].every(([key, value]) => url.searchParams.get(key) === value)
   )
+  await expect(
+    page.getByRole('heading', { name: 'Review workshop change', exact: true })
+  ).toBeVisible()
 
   await page.getByRole('link', { name: 'Back to workshop' }).click()
-  await expect(page).toHaveURL((url) =>
-    [...context].every(([key, value]) => url.searchParams.get(key) === value)
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === `/admin/workshops/${workshop.id}` &&
+      [...context].every(([key, value]) => url.searchParams.get(key) === value)
   )
   await page.goBack()
+  await expect(page).toHaveURL((url) => /^\/admin\/workshops\/changes\/[^/]+$/.test(url.pathname))
+  await expect(
+    page.getByRole('heading', { name: 'Review workshop change', exact: true })
+  ).toBeVisible()
   await page.getByRole('button', { name: 'Apply workshop change' }).click()
   await expect(page).toHaveURL(
     (url) =>
@@ -56,8 +72,21 @@ test('published change review and apply preserve the originating schedule contex
       url.searchParams.get('changed') === '1'
   )
 
-  await page.getByRole('link', { name: 'Back to 2027-01' }).click()
-  await expect(page).toHaveURL((url) =>
-    [...context].every(([key, value]) => url.searchParams.get(key) === value)
+  const returnLink = page.getByRole('link', {
+    name: '← Back to Fixture workshop schedule',
+    exact: true,
+  })
+  const returnHref = await returnLink.getAttribute('href')
+  expect(returnHref).not.toBeNull()
+  const returnUrl = new URL(returnHref!, page.url())
+  expect(returnUrl.pathname).toBe('/admin/workshops')
+  expect(returnUrl.searchParams.get('workshopDefinitionId')).toBe(workshopDefinitionId)
+  for (const [key, value] of context) expect(returnUrl.searchParams.get(key)).toBe(value)
+  await returnLink.click()
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/admin/workshops' &&
+      url.searchParams.get('workshopDefinitionId') === workshopDefinitionId &&
+      [...context].every(([key, value]) => url.searchParams.get(key) === value)
   )
 })

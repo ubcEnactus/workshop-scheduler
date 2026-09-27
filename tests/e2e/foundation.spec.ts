@@ -1,3 +1,4 @@
+import { createSessionFixture } from '../fixtures'
 import { test, expect } from '@playwright/test'
 import { login, requestLink } from './helpers'
 import { prisma } from '../../src/lib/db'
@@ -60,7 +61,7 @@ test('unknown, deleted and revoked invitees cannot establish a session', async (
   for (const email of ['unknown@fixture.local', fixtures.deleted.email]) {
     await page.goto('/login')
     await page.getByLabel('Email', { exact: true }).fill(email)
-    await page.getByRole('button', { name: 'Send magic link' }).click()
+    await page.getByRole('button', { name: 'Send sign-in link' }).click()
     await expect(page).toHaveURL(/\/login\?error=AccessDenied/)
     await expect(
       page.getByText('Sign-in failed. Check the email address and try again.')
@@ -97,40 +98,47 @@ test('PA availability survives reload and can be cleared', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await login(page, fixtures.pa.email, 'pa')
   await page.getByRole('link', { name: 'Submit availability' }).click()
-  await page.getByText('Edit individual half-hour slots', { exact: true }).click()
-  const slot = page.getByRole('checkbox', { name: 'Monday 10:00–10:30 AM', exact: true })
+  await page.getByText('Edit individual 15-minute slots', { exact: true }).click()
+  const slot = page.getByRole('checkbox', { name: 'Monday 10:00–10:15 AM', exact: true })
   await slot.check()
   await page.getByRole('button', { name: 'Save availability' }).click()
   await expect(page.getByText('Availability saved.', { exact: true })).toBeVisible()
   await page.reload()
-  await page.getByText('Edit individual half-hour slots', { exact: true }).click()
+  await page.getByText('Edit individual 15-minute slots', { exact: true }).click()
   await expect(slot).toBeChecked()
-  const friday = page.getByRole('checkbox', { name: 'Friday 10:00–10:30 AM', exact: true })
+  const friday = page.getByRole('checkbox', { name: 'Friday 10:00–10:15 AM', exact: true })
   await friday.scrollIntoViewIfNeeded()
   await friday.focus()
   await friday.press('Space')
   await expect(friday).toBeChecked()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.getByRole('button', { name: 'Save availability' }).click()
+  await expect(page.getByText('Availability saved.', { exact: true })).toBeVisible()
+  await expect
+    .poll(() =>
+      prisma.availability.count({
+        where: { userId: fixtures.pa.id, dayOfWeek: 4, startMin: 600 },
+      })
+    )
+    .toBe(1)
   await page.reload()
-  await page.getByText('Edit individual half-hour slots', { exact: true }).click()
+  await page.getByText('Edit individual 15-minute slots', { exact: true }).click()
   await expect(friday).toBeChecked()
   await slot.uncheck()
   await friday.uncheck()
   await page.getByRole('button', { name: 'Save availability' }).click()
   await expect.poll(() => prisma.availability.count({ where: { userId: fixtures.pa.id } })).toBe(0)
   await page.reload()
-  await page.getByText('Edit individual half-hour slots', { exact: true }).click()
+  await page.getByText('Edit individual 15-minute slots', { exact: true }).click()
   await expect(slot).not.toBeChecked()
 })
 
-test('admin foundation forms persist schools, teachers, PAs, classes and hosting blocks', async ({
+test('admin foundation forms persist schools, teachers, PAs and teacher availability', async ({
   page,
 }) => {
   await login(page, fixtures.admin.email, 'admin')
   await page.goto('/admin/schools')
   await page.locator('input[name="name"]').fill('Browser School')
-  await page.locator('input[name="district"]').fill('Vancouver')
   await page.getByRole('button', { name: 'Add school', exact: true }).click()
   await expect(page.getByText('Browser School', { exact: true })).toBeVisible()
   const school = await prisma.school.findFirstOrThrow({
@@ -145,14 +153,16 @@ test('admin foundation forms persist schools, teachers, PAs, classes and hosting
   await page.locator('input[name="email"]').fill('browser-teacher@fixture.local')
   await page.locator('select[name="schoolId"]').selectOption(school.id)
   await page.getByRole('button', { name: 'Add teacher', exact: true }).click()
-  await expect(page.getByText('Browser Teacher', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Browser Teacher', exact: true })).toBeVisible()
   const teacher = await prisma.user.findFirstOrThrow({
     where: { email: 'browser-teacher@fixture.local', deletedAt: null },
   })
   await page.goto(`/admin/teachers/${teacher.id}/edit`)
   await page.locator('input[name="name"]').fill('Browser Teacher Updated')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByText('Browser Teacher Updated', { exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Browser Teacher Updated', exact: true })
+  ).toBeVisible()
   await page.goto('/admin/pas')
   await page.locator('input[name="name"]').fill('Browser PA')
   await page.locator('input[name="email"]').fill('browser-pa@fixture.local')
@@ -165,31 +175,30 @@ test('admin foundation forms persist schools, teachers, PAs, classes and hosting
   await page.locator('input[name="name"]').fill('Browser PA Updated')
   await page.getByRole('button', { name: /Save/ }).click()
   await expect(page.getByText('Browser PA Updated', { exact: true })).toBeVisible()
-  await page.goto('/admin/classes')
-  await page.getByText('Add a class without booking', { exact: true }).click()
-  await page.locator('input[name="name"]').fill('Browser Class')
-  await page.locator('select[name="teacherId"]').selectOption(teacher.id)
-  await page.getByRole('button', { name: 'Add class', exact: true }).click()
-  await expect(page.getByText('Browser Class', { exact: true })).toBeVisible()
-  const cls = await prisma.classSection.findFirstOrThrow({ where: { name: 'Browser Class' } })
-  await page.goto(`/admin/classes/${cls.id}/edit`)
-  await page.locator('input[name="name"]').fill('Browser Class Updated')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByText('Browser Class Updated', { exact: true })).toBeVisible()
-  await page.goto(`/admin/classes/${cls.id}/edit`)
-  await expect(page.getByRole('heading', { name: 'Add availability' })).toBeVisible()
-  await page.locator('select[name="dayOfWeek"]').selectOption('0')
-  await page.locator('input[name="startTime"]').fill('09:00')
-  await page.locator('input[name="endTime"]').fill('12:00')
-  await page.getByRole('button', { name: 'Add availability', exact: true }).click()
-  await expect(page.getByText('Monday · 09:00–12:00', { exact: true })).toBeVisible()
+  const cls = await prisma.classSection.findUniqueOrThrow({ where: { teacherId: teacher.id } })
+  expect(cls.name).toBe('Browser Teacher Updated')
+  expect(await prisma.classSection.count({ where: { teacherId: teacher.id } })).toBe(1)
+  await page.goto(`/admin/teachers/${teacher.id}`)
+  await page.getByText('Add weekly time', { exact: true }).click()
+  const recurring = page
+    .locator('form')
+    .filter({ has: page.getByRole('button', { name: 'Save weekly time', exact: true }) })
+  await recurring.getByLabel('Weekday', { exact: true }).selectOption('0')
+  await recurring.getByLabel('From', { exact: true }).fill('09:00')
+  await recurring.getByLabel('Until', { exact: true }).fill('12:00')
+  await recurring.getByRole('button', { name: 'Save weekly time', exact: true }).click()
+  await expect(
+    page.getByText(/Monday · 9:00 AM–12:00 PM · Used for date suggestions/)
+  ).toBeVisible()
   await page.reload()
-  await expect(page.getByText('Monday · 09:00–12:00', { exact: true })).toBeVisible()
+  await expect(
+    page.getByText(/Monday · 9:00 AM–12:00 PM · Used for date suggestions/)
+  ).toBeVisible()
   await page.goto(`/admin/teachers/${teacher.id}/edit`)
   await page.locator('select[name="schoolId"]').selectOption(fixtures.otherSchool.id)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByRole('main').getByRole('alert')).toContainText(
-    'before changing their school'
+    'This teacher has a saved schedule'
   )
 })
 
@@ -198,38 +207,70 @@ test('admin creates and reloads a draft, edits across months, and filters the mo
 }) => {
   await login(page, fixtures.admin.email, 'admin')
   await page.goto('/admin/workshops?month=2027-01')
-  await page.getByRole('link', { name: 'Book workshop', exact: true }).click()
-  await page.getByLabel('Use a saved class').selectOption(fixtures.cls.id)
+  await page
+    .getByRole('link', { name: 'Schedule a confirmed teacher session', exact: true })
+    .click()
+  await page.getByLabel('Workshop', { exact: true }).selectOption('fixture-definition-1')
+  await page.getByLabel('Choose or add a school').selectOption(fixtures.school.id)
+  await page.getByLabel('Choose or add a teacher').selectOption(fixtures.teacher.id)
   await page.getByLabel('Vancouver date').fill('2027-01-04')
   await page.getByLabel('Start time', { exact: true }).fill('10:00')
   await page.getByLabel('End time', { exact: true }).fill('11:00')
-  await page.getByRole('button', { name: 'Book workshop' }).click()
+  await page.getByRole('button', { name: 'Schedule teacher session' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Draft saved.' })).toHaveText(
     'Draft saved.'
   )
   await page.reload()
-  await expect(page.getByLabel('Vancouver date')).toHaveValue('2027-01-04')
-  await page.getByLabel('Vancouver date').fill('2027-02-01')
-  await page.getByLabel('Start time', { exact: true }).fill('09:30')
-  await page.getByRole('button', { name: 'Save draft' }).click()
-  await expect(page.getByRole('link', { name: 'Back to 2027-01' })).toBeVisible()
-  await page.getByRole('link', { name: 'Back to 2027-01' }).click()
-  await page.getByLabel('Month', { exact: true }).fill('2027-02')
+  await page.getByText('Edit date and details', { exact: true }).click()
+  const editDraftForm = page.locator('form').filter({
+    has: page.getByRole('button', { name: 'Save draft', exact: true }),
+  })
+  await expect(editDraftForm.getByLabel('Vancouver date')).toHaveValue('2027-01-04')
+  const sessionUrl = page.url()
+  await page.getByRole('link', { name: 'Included teacher and availability' }).click()
+  const availabilityForm = page.locator('form').filter({
+    has: page.getByRole('button', { name: 'Add availability', exact: true }),
+  })
+  await availabilityForm.getByLabel('Date', { exact: true }).fill('2027-02-01')
+  await availabilityForm.getByLabel('Start time', { exact: true }).fill('09:30')
+  await availabilityForm.getByLabel('End time', { exact: true }).fill('11:00')
+  await availabilityForm.getByRole('button', { name: 'Add availability', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /Feb 1/ })).toBeVisible()
+  await page.goto(sessionUrl)
+  await page.getByText('Edit date and details', { exact: true }).click()
+  const reloadedEditDraftForm = page.locator('form').filter({
+    has: page.getByRole('button', { name: 'Save draft', exact: true }),
+  })
+  await reloadedEditDraftForm.getByLabel('Vancouver date').fill('2027-02-01')
+  await reloadedEditDraftForm.getByLabel('Start time', { exact: true }).fill('09:30')
+  await reloadedEditDraftForm.getByRole('button', { name: 'Save draft' }).click()
+  await expect
+    .poll(async () => {
+      const saved = await prisma.workshopSession.findFirstOrThrow()
+      return saved.scheduledStart.toISOString()
+    })
+    .toBe(vancouverToUtc('2027-02-01', 570).toISOString())
+  await expect(page.getByRole('link', { name: 'Back to Workshop 1 schedule' })).toBeVisible()
+  await page.getByRole('link', { name: 'Back to Workshop 1 schedule' }).click()
+  await expect(page.getByRole('table')).toContainText('Fixture Biology')
+  await page.goto('/admin/workshops?month=2027-02')
   await expect(page).toHaveURL(/month=2027-02/)
   await expect(page.getByRole('table')).toContainText('Fixture Biology')
   await page.screenshot({ path: 'work/workshops-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
-  await expect(page.getByRole('link', { name: 'Book workshop', exact: true })).toBeVisible()
+  await expect(
+    page.getByRole('link', { name: 'Schedule a confirmed teacher session', exact: true })
+  ).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true
   )
   await page.screenshot({ path: 'work/workshops-mobile.png', fullPage: true })
   await page.getByLabel('School filter').selectOption(fixtures.otherSchool.id)
-  await expect(page.getByText('No workshops in this month for these filters.')).toBeVisible()
+  await expect(page.getByText('No teacher sessions in this month for these filters.')).toBeVisible()
   await page.getByLabel('School filter').selectOption('')
   await expect(page.getByRole('table')).toContainText('draft')
   await page.getByRole('link', { name: 'Previous month' }).click()
-  await expect(page.getByText('No workshops in this month for these filters.')).toBeVisible()
+  await expect(page.getByText('No teacher sessions in this month for these filters.')).toBeVisible()
   await page.getByRole('link', { name: 'Next month' }).click()
   await expect(page.getByRole('table')).toContainText('Fixture Biology')
   await page.goto('/admin/workshops?month=invalid')
@@ -239,7 +280,7 @@ test('admin creates and reloads a draft, edits across months, and filters the mo
 test('drafts stay private and only the assigned PA and school see published fixtures', async ({
   browser,
 }) => {
-  const draft = await prisma.workshop.create({
+  const draft = await createSessionFixture({
     data: {
       classSectionId: fixtures.cls.id,
       scheduledStart: vancouverToUtc('2027-01-04', 600),
@@ -247,7 +288,7 @@ test('drafts stay private and only the assigned PA and school see published fixt
       assignments: { create: { paId: fixtures.pa.id, status: 'PUBLISHED' } },
     },
   })
-  const published = await prisma.workshop.create({
+  const published = await createSessionFixture({
     data: {
       classSectionId: fixtures.sibling.id,
       status: 'PUBLISHED',

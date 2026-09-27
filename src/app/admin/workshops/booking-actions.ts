@@ -9,26 +9,31 @@ import type { WorkshopFormState } from '@/lib/schemas/form-state'
 import { NEW_CHOICE, workshopBookingSchema, type WorkshopBookingInput } from '@/lib/schemas/booking'
 import { schedulingHref } from '@/lib/scheduling/navigation'
 import { scheduleTransaction, SchedulingError, validateSlot } from '@/lib/scheduling/store'
-import { vancouverMonthKey } from '@/lib/time'
+import { vancouverMonthKey, vancouverToUtc } from '@/lib/time'
+import { clockMinutes } from '@/lib/schemas/workshops'
 
 const RETRY_ERROR = 'The schedule changed. Reload and try again.'
 
 function readInput(formData: FormData) {
   return workshopBookingSchema.safeParse({
     requestKey: formData.get('requestKey'),
+    workshopDefinitionId: formData.get('workshopDefinitionId'),
     schoolChoice: formData.get('schoolChoice'),
     schoolName: formData.get('schoolName') ?? '',
-    schoolDistrict: formData.get('schoolDistrict') ?? '',
     teacherChoice: formData.get('teacherChoice'),
     teacherName: formData.get('teacherName') ?? '',
     teacherEmail: formData.get('teacherEmail') ?? '',
-    classChoice: formData.get('classChoice'),
+    classChoice: formData.get('classChoice') ?? NEW_CHOICE,
     className: formData.get('className') ?? '',
     date: formData.get('date'),
     startTime: formData.get('startTime'),
     endTime: formData.get('endTime'),
     minPAs: formData.get('minPAs'),
     maxPAs: formData.get('maxPAs'),
+    mode: formData.get('mode') ?? undefined,
+    location: formData.get('location') ?? '',
+    notes: formData.get('notes') ?? '',
+    participantInstructions: formData.get('participantInstructions') ?? '',
     month: formData.get('month') ?? undefined,
     schoolId: formData.get('schoolId'),
     returnClassSectionId: formData.get('returnClassSectionId'),
@@ -42,9 +47,10 @@ function normalized(value: string) {
 
 function payloadHash(input: WorkshopBookingInput) {
   const payload = {
+    workshopDefinitionId: input.workshopDefinitionId,
     school:
       input.schoolChoice === NEW_CHOICE
-        ? { name: normalized(input.schoolName), district: normalized(input.schoolDistrict) }
+        ? { name: normalized(input.schoolName) }
         : { id: input.schoolChoice },
     teacher:
       input.teacherChoice === NEW_CHOICE
@@ -59,12 +65,16 @@ function payloadHash(input: WorkshopBookingInput) {
     endTime: input.endTime,
     minPAs: input.minPAs,
     maxPAs: input.maxPAs,
+    mode: input.mode,
+    location: input.location,
+    notes: input.notes,
+    participantInstructions: input.participantInstructions,
   }
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex')
 }
 
 type BookingResult = {
-  workshopId: string
+  workshopSessionId: string
   schoolId: string
   classSectionId: string
   month: string
@@ -73,18 +83,19 @@ type BookingResult = {
 async function resolveExistingClass(tx: Prisma.TransactionClient, input: WorkshopBookingInput) {
   const cls = await tx.classSection.findUnique({
     where: { id: input.classChoice },
-    include: { teacher: true, school: true },
+    include: { school: true },
   })
-  if (
-    !cls ||
-    cls.school.deletedAt !== null ||
-    cls.teacher.deletedAt !== null ||
-    cls.teacher.role !== 'TEACHER' ||
-    cls.teacher.schoolId !== cls.schoolId
-  )
-    throw new SchedulingError('Select an active class with a teacher at its school.')
-  if (input.schoolChoice !== cls.schoolId || input.teacherChoice !== cls.teacherId)
-    throw new SchedulingError('The selected school, teacher, and class no longer match.')
+  if (!cls || cls.archivedAt !== null || cls.school.deletedAt !== null)
+    throw new SchedulingError('Select an active teacher at the selected school.')
+  const teacherId = cls.teacherId
+  const teacher = await tx.user.findFirst({
+    where: { id: teacherId, deletedAt: null, role: 'TEACHER', schoolId: cls.schoolId },
+    select: { id: true },
+  })
+  if (!teacher)
+    throw new SchedulingError('The teacher is unavailable at this school on the selected date.')
+  if (input.schoolChoice !== cls.schoolId || input.teacherChoice !== teacherId)
+    throw new SchedulingError('The selected teacher no longer matches this school or schedule.')
   return { classSectionId: cls.id, schoolId: cls.schoolId }
 }
 
@@ -99,17 +110,13 @@ async function resolveSchool(tx: Prisma.TransactionClient, input: WorkshopBookin
   }
   const schools = await tx.school.findMany({
     where: { deletedAt: null },
-    select: { id: true, name: true, district: true },
+    select: { id: true, name: true },
   })
-  const found = schools.find(
-    (school) =>
-      normalized(school.name) === normalized(input.schoolName) &&
-      normalized(school.district) === normalized(input.schoolDistrict)
-  )
+  const found = schools.find((school) => normalized(school.name) === normalized(input.schoolName))
   if (found) return found.id
   return (
     await tx.school.create({
-      data: { name: input.schoolName, district: input.schoolDistrict },
+      data: { name: input.schoolName },
       select: { id: true },
     })
   ).id
@@ -168,16 +175,22 @@ async function resolveClass(
   teacherId: string
 ) {
   if (input.classChoice !== NEW_CHOICE)
-    throw new SchedulingError('The selected school, teacher, and class no longer match.')
+    throw new SchedulingError('The selected teacher no longer matches this school or schedule.')
   const classes = await tx.classSection.findMany({
-    where: { schoolId, teacherId },
-    select: { id: true, name: true },
+    where: { schoolId, archivedAt: null },
+    select: { id: true, name: true, teacherId: true },
   })
-  const found = classes.find((cls) => normalized(cls.name) === normalized(input.className))
+  const found = classes.find((cls) => cls.teacherId === teacherId)
   if (found) return found.id
+  const existing = await tx.classSection.findFirst({ where: { teacherId } })
+  if (existing)
+    throw new SchedulingError('Reactivate this teacher before scheduling another session.')
+  const teacher = await tx.user.findFirstOrThrow({
+    where: { id: teacherId, role: 'TEACHER', deletedAt: null },
+  })
   return (
     await tx.classSection.create({
-      data: { name: input.className, schoolId, teacherId },
+      data: { name: teacher.name ?? teacher.email, schoolId, teacherId },
       select: { id: true },
     })
   ).id
@@ -192,9 +205,10 @@ async function saveBooking(actorId: string, input: WorkshopBookingInput): Promis
         workshops: {
           select: {
             id: true,
-            classSectionId: true,
             scheduledStart: true,
-            classSection: { select: { schoolId: true } },
+            classWorkshop: {
+              select: { classSectionId: true, classSection: { select: { schoolId: true } } },
+            },
           },
         },
       },
@@ -208,9 +222,9 @@ async function saveBooking(actorId: string, input: WorkshopBookingInput): Promis
       if (!workshop || prior.workshops.length !== 1)
         throw new SchedulingError('This booking could not be recovered. Reload and try again.')
       return {
-        workshopId: workshop.id,
-        classSectionId: workshop.classSectionId,
-        schoolId: workshop.classSection.schoolId,
+        workshopSessionId: workshop.id,
+        classSectionId: workshop.classWorkshop.classSectionId,
+        schoolId: workshop.classWorkshop.classSection.schoolId,
         month: vancouverMonthKey(workshop.scheduledStart),
       }
     }
@@ -227,6 +241,35 @@ async function saveBooking(actorId: string, input: WorkshopBookingInput): Promis
       classSectionId = await resolveClass(tx, input, schoolId, teacherId)
     }
 
+    const definition = await tx.workshopDefinition.findUnique({
+      where: { id: input.workshopDefinitionId },
+    })
+    if (!definition || definition.identityStatus !== 'IDENTIFIED')
+      throw new SchedulingError('Select an identified workshop run.')
+    const classWorkshop = await tx.classWorkshop.upsert({
+      where: {
+        classSectionId_workshopDefinitionId: {
+          classSectionId,
+          workshopDefinitionId: definition.id,
+        },
+      },
+      create: { classSectionId, workshopDefinitionId: definition.id },
+      update: {},
+    })
+    // Direct booking records the admin's confirmed candidate and the dated
+    // session atomically. It never implies recurring or other-workshop availability.
+    const start = vancouverToUtc(input.date, clockMinutes(input.startTime))
+    const end = vancouverToUtc(input.date, clockMinutes(input.endTime))
+    await tx.availabilitySlot.upsert({
+      where: { classWorkshopId_start_end: { classWorkshopId: classWorkshop.id, start, end } },
+      create: {
+        classWorkshopId: classWorkshop.id,
+        start,
+        end,
+        notes: 'Date confirmed by admin during direct booking.',
+      },
+      update: {},
+    })
     const month = input.date.slice(0, 7)
     const batch = await tx.workshopBatch.create({
       data: { requestKey: input.requestKey, actorId, month, payloadHash: hash },
@@ -236,6 +279,7 @@ async function saveBooking(actorId: string, input: WorkshopBookingInput): Promis
       tx,
       {
         classSectionId,
+        workshopDefinitionId: definition.id,
         date: input.date,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -245,11 +289,22 @@ async function saveBooking(actorId: string, input: WorkshopBookingInput): Promis
       undefined,
       { hostingConfirmed: true }
     )
-    const workshop = await tx.workshop.create({
-      data: { ...slot, batchId: batch.id },
+    const workshop = await tx.workshopSession.create({
+      data: {
+        ...slot,
+        batchId: batch.id,
+        mode: input.mode,
+        location: input.location || null,
+        notes: input.notes || null,
+        participantInstructions: input.participantInstructions || null,
+      },
       select: { id: true },
     })
-    return { workshopId: workshop.id, schoolId, classSectionId, month }
+    await tx.classWorkshop.update({
+      where: { id: classWorkshop.id },
+      data: { status: 'SCHEDULED', revision: { increment: 1 } },
+    })
+    return { workshopSessionId: workshop.id, schoolId, classSectionId, month }
   })
 }
 
@@ -289,7 +344,7 @@ export async function createWorkshopBooking(
   revalidatePath('/admin/workshops', 'layout')
   redirect(
     schedulingHref(
-      `/admin/workshops/${result.workshopId}`,
+      `/admin/workshops/${result.workshopSessionId}`,
       {
         month: result.month,
         schoolId: result.schoolId,

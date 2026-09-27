@@ -22,9 +22,9 @@ function minutes(time: string) {
 export const workshopBookingSchema = z
   .object({
     requestKey: z.uuid('Reload the form and try again.'),
+    workshopDefinitionId: z.string().min(1, 'Select a workshop run.'),
     schoolChoice: choiceSchema,
     schoolName: z.string().trim().max(200),
-    schoolDistrict: z.string().trim().max(200).default(''),
     teacherChoice: choiceSchema,
     teacherName: z.string().trim().max(200),
     teacherEmail: z
@@ -36,12 +36,20 @@ export const workshopBookingSchema = z
         'Enter a valid email address.'
       ),
     classChoice: choiceSchema,
-    className: z.string().trim().max(200),
+    className: z
+      .string()
+      .trim()
+      .max(200)
+      .transform((value) => value || 'Workshop group'),
     date: z.string().refine(isCalendarDate, 'Enter a valid Vancouver date.'),
     startTime: timeSchema,
     endTime: timeSchema,
     minPAs: staffingSchema,
     maxPAs: staffingSchema,
+    mode: z.literal('IN_PERSON').default('IN_PERSON'),
+    location: z.string().trim().max(500).default(''),
+    notes: z.string().trim().max(5000).default(''),
+    participantInstructions: z.string().trim().max(5000).default(''),
     month: z
       .string()
       .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Choose a month in YYYY-MM format.')
@@ -70,8 +78,6 @@ export const workshopBookingSchema = z
           message: 'Teacher email is required.',
         })
     }
-    if (data.classChoice === NEW_CHOICE && data.className === '')
-      ctx.addIssue({ code: 'custom', path: ['className'], message: 'Class name is required.' })
     if (data.endTime <= data.startTime)
       ctx.addIssue({
         code: 'custom',

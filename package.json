@@ -21,6 +21,7 @@
     "test:integration": "node scripts/with-test-db.mjs integration",
     "test:e2e": "node scripts/with-test-db.mjs e2e",
     "test:e2e:preview": "node scripts/with-test-db.mjs e2e-preview",
+    "benchmark:staffing": "tsx scripts/benchmark-exact-staffing.mts",
     "db:local": "node scripts/dev-db.mjs",
     "postinstall": "prisma generate",
     "db:migrate": "dotenv -e .env.local -- prisma migrate dev",

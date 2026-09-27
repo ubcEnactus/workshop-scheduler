@@ -1,14 +1,47 @@
 import type { Prisma } from '@prisma/client'
 import type { ChangeRequest } from '@/lib/schemas/changes'
 import { workshopSchema } from '@/lib/schemas/workshops'
-import { eligibility, type ScheduleSnapshot, type ScheduledWorkshop } from './eligibility'
-import { validateSlot, SchedulingError } from './store'
+import {
+  assessAssignment,
+  assignmentPolicyHash,
+  manualAssignmentDecision,
+  type ScheduleSnapshot,
+  type ScheduledWorkshop,
+} from './eligibility'
+import { validateSlot, SchedulingError, type ScheduleLoadScope } from './store'
+import { vancouverToUtc } from '@/lib/time'
+import { clockMinutes } from '@/lib/schemas/workshops'
+
+export function changeScheduleScope(data: ChangeRequest): ScheduleLoadScope {
+  return {
+    kind: 'sessions',
+    workshopSessionIds: [data.id],
+    ...(['EDIT', 'RESCHEDULE'].includes(data.kind) && 'date' in data
+      ? {
+          neighborhoods: [
+            {
+              start: vancouverToUtc(data.date, clockMinutes(data.startTime)),
+              end: vancouverToUtc(data.date, clockMinutes(data.endTime)),
+            },
+          ],
+        }
+      : {}),
+  }
+}
 
 export function auditState(w: ScheduledWorkshop, snapshot: ScheduleSnapshot) {
   return {
+    schemaVersion: 2,
     status: w.status,
     start: w.scheduledStart.toISOString(),
     end: w.scheduledEnd.toISOString(),
+    minPAs: w.minPAs,
+    maxPAs: w.maxPAs,
+    mode: w.mode ?? 'IN_PERSON',
+    location: w.location ?? null,
+    notes: w.notes ?? null,
+    participantInstructions: w.participantInstructions ?? null,
+    dateExceptionReason: w.dateExceptionReason ?? null,
     pas: w.assignments.map((a) => ({
       id: a.paId,
       name:
@@ -16,13 +49,27 @@ export function auditState(w: ScheduledWorkshop, snapshot: ScheduleSnapshot) {
         snapshot.pas.find((p) => p.id === a.paId)?.email ??
         'Inactive PA',
     })),
+    availabilityOverrides: w.assignments
+      .filter((a) => a.overrideAvailability)
+      .map((a) => ({ paId: a.paId })),
+    workloadOverrides: w.assignments
+      .filter((a) => a.overrideSameDay || a.overrideWeek)
+      .map((a) => ({
+        paId: a.paId,
+        sameDay: a.overrideSameDay ?? false,
+        week: a.overrideWeek ?? false,
+        reason: a.overrideReason ?? null,
+      })),
   }
 }
-// Validate twice: during staging for review and again in the apply transaction.
+
+// Stage a complete final state, then revalidate that same state when applying it.
+// Preview may describe unconfirmed exceptions; only the apply path can commit them.
 export async function proposeChange(
   tx: Prisma.TransactionClient,
   snapshot: ScheduleSnapshot,
-  data: ChangeRequest
+  data: ChangeRequest,
+  options?: { actorId: string; preview?: boolean }
 ) {
   const current = snapshot.workshops.find((w) => w.id === data.id)
   if (!current || !['DRAFT', 'PUBLISHED'].includes(current.status))
@@ -32,8 +79,9 @@ export async function proposeChange(
   const next: ScheduledWorkshop = {
     ...current,
     assignments: current.assignments.map((a) => ({ ...a })),
-    locked: true,
+    locked: current.status === 'DRAFT' ? current.locked : true,
   }
+  let slotData: Awaited<ReturnType<typeof validateSlot>> | undefined
   if (data.kind === 'CANCEL') next.status = 'CANCELLED'
   if (data.kind === 'COMPLETE') {
     if (current.status !== 'PUBLISHED' || current.scheduledEnd.getTime() > Date.now())
@@ -47,35 +95,90 @@ export async function proposeChange(
       current.assignments.some((a) => a.paId === data.newPaId)
     )
       throw new SchedulingError('Choose an assigned PA and a different replacement.')
-    next.assignments = next.assignments.filter((a) => a.paId !== data.oldPaId)
+    next.assignments = current.assignments.filter((a) => a.paId !== data.oldPaId)
     next.assignments.push({
       paId: data.newPaId,
       status: current.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT',
       source: 'MANUAL',
     })
   }
-  if (data.kind === 'RESCHEDULE') {
-    const slot = workshopSchema.safeParse({
+  if (data.kind === 'EDIT') {
+    if (data.maxPAs < data.minPAs)
+      throw new SchedulingError('Maximum staffing must be at least the minimum.')
+    if (data.paIds.length > data.maxPAs)
+      throw new SchedulingError('Remove PAs or increase the maximum staffing.')
+    next.assignments = data.paIds.map((paId) => {
+      const existing = current.assignments.find((a) => a.paId === paId)
+      return existing
+        ? { ...existing }
+        : { paId, status: current.status === 'PUBLISHED' ? 'PUBLISHED' : 'DRAFT', source: 'MANUAL' }
+    })
+    Object.assign(next, {
+      minPAs: data.minPAs,
+      maxPAs: data.maxPAs,
+      mode: data.mode,
+      location: data.location || null,
+      notes: data.notes || null,
+      participantInstructions: data.participantInstructions || null,
+    })
+  }
+  if (data.kind === 'RESCHEDULE' || data.kind === 'EDIT') {
+    const parsed = workshopSchema.safeParse({
       ...data,
       classSectionId: current.classSectionId,
-      minPAs: current.minPAs,
-      maxPAs: current.maxPAs,
+      workshopDefinitionId: current.workshopDefinitionId,
+      minPAs: next.minPAs,
+      maxPAs: next.maxPAs,
     })
-    if (!slot.success) throw new SchedulingError(slot.error.issues[0].message)
-    Object.assign(next, await validateSlot(tx, slot.data, current.id), { hostingValid: true })
+    if (!parsed.success) throw new SchedulingError(parsed.error.issues[0].message)
+    // Prefer ordinary authorization. Only an actual failure may need an explicit date exception.
+    try {
+      slotData = await validateSlot(tx, parsed.data, current.id)
+    } catch (error) {
+      if (
+        !(error instanceof SchedulingError) ||
+        !options?.actorId ||
+        (!options.preview && !data.dateExceptionConfirmed)
+      )
+        throw error
+      slotData = await validateSlot(tx, parsed.data, current.id, {
+        actorId: options.actorId,
+        dateExceptionReason: data.reason,
+        hostingConfirmed: true,
+      })
+    }
+    Object.assign(next, slotData, {
+      hostingValid: true,
+      dateExceptionApproved: Boolean(slotData.dateExceptionReason),
+    })
   }
-  const final = {
+  const final: ScheduleSnapshot = {
     ...snapshot,
     workshops: snapshot.workshops.map((w) => (w.id === next.id ? next : w)),
   }
-  if (data.kind === 'REPLACE' || data.kind === 'RESCHEDULE') {
-    // Replacement checks the new PA; an unrelated existing issue remains flagged.
-    // Rescheduling must revalidate every retained PA in the destination month.
-    const checked = data.kind === 'REPLACE' ? [data.newPaId] : next.assignments.map((a) => a.paId)
-    for (const paId of checked) {
-      const reasons = eligibility(final, next, paId)
-      if (reasons.length) throw new SchedulingError(reasons.join(' '))
+  const moved =
+    current.scheduledStart.getTime() !== next.scheduledStart.getTime() ||
+    current.scheduledEnd.getTime() !== next.scheduledEnd.getTime()
+  const warningDetails: { paId: string; assessment: ReturnType<typeof assessAssignment> }[] = []
+  if (['EDIT', 'REPLACE', 'RESCHEDULE'].includes(data.kind)) {
+    for (const assignment of next.assignments) {
+      const previous = current.assignments.find((a) => a.paId === assignment.paId)
+      if (previous && !moved) continue
+      const assessment = assessAssignment(final, next, assignment.paId)
+      const decision = manualAssignmentDecision(final, next, assignment.paId, {
+        expectedPolicyHash: assignmentPolicyHash(next, assignment.paId, assessment),
+        overrideReason: data.reason,
+      })
+      if (!decision.ok) throw new SchedulingError(decision.reasons.join(' '))
+      assignment.overrideAvailability = decision.overrideAvailability
+      assignment.overrideSameDay = decision.overrideSameDay
+      assignment.overrideWeek = decision.overrideWeek
+      assignment.overrideReason = decision.overrideReason
+      if (decision.overrideAvailability || decision.overrideSameDay || decision.overrideWeek)
+        assignment.source = 'MANUAL'
+      if (assessment.manualWarnings.length || assessment.availabilityWarnings.length)
+        warningDetails.push({ paId: assignment.paId, assessment })
     }
   }
-  return { current, next, final }
+  return { current, next, final, slotData, warningDetails }
 }

@@ -19,12 +19,17 @@ export function clockMinutes(time: string): number {
 
 export const workshopSchema = z
   .object({
-    classSectionId: z.string().min(1, 'Select a class.'),
+    classSectionId: z.string().min(1, 'Select a teacher.'),
+    workshopDefinitionId: z.string().min(1, 'Select a workshop run.'),
     date: z.string().refine(isCalendarDate, 'Enter a valid Vancouver date.'),
     startTime: timeSchema,
     endTime: timeSchema,
     minPAs: staffingSchema,
     maxPAs: staffingSchema,
+    mode: z.literal('IN_PERSON').default('IN_PERSON'),
+    location: z.string().trim().max(500).default(''),
+    notes: z.string().trim().max(5000).default(''),
+    participantInstructions: z.string().trim().max(5000).default(''),
   })
   .superRefine((data, ctx) => {
     if (data.endTime <= data.startTime)
@@ -45,7 +50,7 @@ export const workshopSchema = z
         ctx.addIssue({
           code: 'custom',
           path: ['date'],
-          message: 'Choose a weekday with a class hosting block.',
+          message: 'Choose a weekday with a teacher hosting block.',
         })
       for (const field of ['startTime', 'endTime'] as const) {
         if (timeSchema.safeParse(data[field]).success) {

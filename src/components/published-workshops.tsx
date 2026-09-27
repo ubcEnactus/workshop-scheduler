@@ -6,15 +6,20 @@ import {
   MapPin,
   Users,
 } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { Panel } from '@/components/ui/panel'
 import { StatusBadge } from '@/components/ui/status-badge'
 import { formatInstantRange, VANCOUVER_TZ } from '@/lib/time'
 
 type Item = {
+  definitionTitle?: string
   id: string
   name: string
   school?: string
+  mode: 'IN_PERSON' | 'ONLINE'
+  location: string | null
+  participantInstructions?: string | null
   start: Date
   end: Date
   status: string
@@ -40,10 +45,14 @@ export function PublishedWorkshops({
   items,
   upcomingTitle,
   empty,
+  upcomingFooter,
+  historyFooter,
 }: {
   items: Item[]
   upcomingTitle: string
   empty: string
+  upcomingFooter?: ReactNode
+  historyFooter?: ReactNode
 }) {
   const now = Date.now()
   const upcoming = items.filter((workshop) => {
@@ -108,6 +117,9 @@ export function PublishedWorkshops({
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <h3 className="font-semibold text-slate-900">{workshop.name}</h3>
+                          {workshop.definitionTitle && (
+                            <p className="text-sm text-slate-600">{workshop.definitionTitle}</p>
+                          )}
                           {workshop.school ? (
                             <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
                               <MapPin className="size-3.5 shrink-0" aria-hidden="true" />
@@ -130,6 +142,9 @@ export function PublishedWorkshops({
                         />
                         {formatInstantRange(workshop.start, workshop.end)}
                       </p>
+                      <p className="mt-2 text-sm break-words text-slate-600">
+                        {workshop.location}
+                      </p>
                       {workshop.pas !== undefined ? (
                         <p className="mt-2 flex items-start gap-2 text-sm text-slate-600">
                           <Users
@@ -139,6 +154,16 @@ export function PublishedWorkshops({
                           PAs: {workshop.pas || 'Not assigned'}
                         </p>
                       ) : null}
+                      {workshop.participantInstructions && (
+                        <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                          <p className="text-xs font-semibold tracking-wide text-blue-900 uppercase">
+                            Instructions
+                          </p>
+                          <p className="mt-1 text-sm whitespace-pre-wrap text-blue-950">
+                            {workshop.participantInstructions}
+                          </p>
+                        </div>
+                      )}
                       {workshop.reason ? (
                         <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
                           Latest change: {workshop.reason}
@@ -147,8 +172,8 @@ export function PublishedWorkshops({
                       {workshop.review ? (
                         <p className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
                           <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                          This commitment needs admin review. It remains assigned until an admin
-                          changes it.
+                          This commitment needs admin review. You remain assigned and should follow
+                          the current details above unless an admin contacts you.
                         </p>
                       ) : null}
                     </div>
@@ -157,6 +182,7 @@ export function PublishedWorkshops({
               ))}
             </ul>
           )}
+          {title === upcomingTitle ? upcomingFooter : historyFooter}
         </Panel>
       ))}
     </>

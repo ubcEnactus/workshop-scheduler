@@ -16,10 +16,19 @@ import {
 function readInput(form: FormData) {
   return workshopSchema.safeParse(
     Object.fromEntries(
-      ['classSectionId', 'date', 'startTime', 'endTime', 'minPAs', 'maxPAs'].map((key) => [
-        key,
-        form.get(key),
-      ])
+      [
+        'classSectionId',
+        'workshopDefinitionId',
+        'date',
+        'startTime',
+        'endTime',
+        'minPAs',
+        'maxPAs',
+        'mode',
+        'location',
+        'notes',
+        'participantInstructions',
+      ].map((key) => [key, form.get(key) ?? undefined])
     )
   )
 }
@@ -37,7 +46,20 @@ async function createDraft(formData: FormData) {
   try {
     workshop = await scheduleTransaction(async (tx) => {
       const data = await validateSlot(tx, parsed.data)
-      return tx.workshop.create({ data })
+      const workshop = await tx.workshopSession.create({
+        data: {
+          ...data,
+          mode: parsed.data.mode,
+          location: parsed.data.location || null,
+          notes: parsed.data.notes || null,
+          participantInstructions: parsed.data.participantInstructions || null,
+        },
+      })
+      await tx.classWorkshop.update({
+        where: { id: data.classWorkshopId },
+        data: { status: 'SCHEDULED', revision: { increment: 1 } },
+      })
+      return workshop
     })
   } catch (error) {
     if (
@@ -73,7 +95,7 @@ async function updateDraft(formData: FormData) {
     }
   try {
     await scheduleTransaction(async (tx) => {
-      const existing = await tx.workshop.findUnique({
+      const existing = await tx.workshopSession.findUnique({
         where: { id: identity.data.id },
         include: { _count: { select: { assignments: true } } },
       })
@@ -83,9 +105,17 @@ async function updateDraft(formData: FormData) {
       if (existing.version !== identity.data.version)
         throw new WorkshopError('This workshop changed. Reload before editing it again.')
       const data = await validateSlot(tx, parsed.data, existing.id)
-      const result = await tx.workshop.updateMany({
+      const result = await tx.workshopSession.updateMany({
         where: { id: existing.id, version: identity.data.version, status: 'DRAFT' },
-        data: { ...data, locked: true, version: { increment: 1 } },
+        data: {
+          ...data,
+          mode: parsed.data.mode,
+          location: parsed.data.location || null,
+          notes: parsed.data.notes || null,
+          participantInstructions: parsed.data.participantInstructions || null,
+          locked: existing.locked,
+          version: { increment: 1 },
+        },
       })
       if (result.count !== 1)
         throw new WorkshopError('This workshop changed. Reload before editing it again.')
@@ -98,6 +128,7 @@ async function updateDraft(formData: FormData) {
   }
   revalidatePath('/admin/workshops')
   revalidatePath(target)
+  revalidatePath('/admin/workshop-definitions', 'layout')
   return { id: identity.data.id }
 }
 

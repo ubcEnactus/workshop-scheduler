@@ -1,4 +1,14 @@
 type EmailEnvironment = { nodeEnv?: string; apiKey?: string; from?: string }
+
+export function isEmailSignInReady(environment: EmailEnvironment): boolean {
+  try {
+    emailDeliveryMode(environment)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export function emailDeliveryMode({
   nodeEnv,
   apiKey,

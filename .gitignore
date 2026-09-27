@@ -13,6 +13,9 @@ node_modules
 # testing
 coverage
 work/
+# Private admin handoff includes its deployment access link.
+/output/pdf/workshop-scheduler-admin-guide.pdf
+/output/pdf/enspire-admin-guide.pdf
 
 # next.js
 .next/

@@ -10,13 +10,6 @@ export function ClassDefaults({
 }) {
   const fields = [
     {
-      key: 'monthlyCadence',
-      label: 'Workshops per month',
-      value: initial?.monthlyCadence ?? 1,
-      min: 0,
-      max: 31,
-    },
-    {
       key: 'defaultDurationMinutes',
       label: 'Default duration (minutes)',
       value: initial?.defaultDurationMinutes ?? 60,
@@ -40,11 +33,10 @@ export function ClassDefaults({
   ]
   return (
     <fieldset className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-      <legend className="px-2 text-sm font-semibold text-slate-900">
-        Monthly workshop defaults
-      </legend>
+      <legend className="px-2 text-sm font-semibold text-slate-900">Session defaults</legend>
       <p className="mb-4 text-sm text-slate-500">
-        Used for new plans. Changing defaults leaves existing workshops unchanged.
+        Used when a run does not provide its own duration or staffing defaults. Changing these
+        values leaves existing sessions unchanged.
       </p>
       <div className="form-grid">
         {fields.map((field) => (

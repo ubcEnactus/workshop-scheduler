@@ -1,181 +1,66 @@
-import { randomUUID } from 'node:crypto'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { vancouverMonthBounds } from '@/lib/time'
-import { normalizeSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
-import {
-  classEditPlanningHref,
-  parsePlanningDraft,
-  type PlanningReturn,
-} from '@/lib/scheduling/planning-return'
-import { FormError } from '@/components/form-error'
-import { ClassSelection } from '@/components/class-selection'
-import { PlanningForm } from '@/components/planning-form'
+import { deliveryWindowLabel } from '@/lib/scheduling/delivery-windows'
 import { PageHeader } from '@/components/ui/page-header'
-import { Panel } from '@/components/ui/panel'
-import { buttonClasses } from '@/components/ui/button'
+import { FormError } from '@/components/form-error'
 
-export default async function MonthlyPlan({
+export default async function RunPlan({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   await requireRole('ADMIN')
   const query = await searchParams
-  const [allClasses, schools] = await Promise.all([
-    prisma.classSection.findMany({
-      where: { school: { deletedAt: null }, teacher: { deletedAt: null, role: 'TEACHER' } },
-      include: { school: true, teacher: true, meetings: true },
-      orderBy: { name: 'asc' },
-    }),
-    prisma.school.findMany({ where: { deletedAt: null }, select: { id: true } }),
-  ])
-  const activeClasses = allClasses.filter((c) => c.teacher.schoolId === c.schoolId)
-  const { context, warning } = normalizeSchedulingContext(query, activeClasses, schools)
-  const { start, end } = vancouverMonthBounds(context.month)
-  const workshops = await prisma.workshop.findMany({
-    where: { scheduledStart: { gte: start, lt: end } },
-    include: { classSection: { select: { teacherId: true } } },
+  const definitions = await prisma.workshopDefinition.findMany({
+    orderBy: [{ deliveryStartsOn: 'desc' }, { title: 'asc' }],
   })
-  const classes = activeClasses.filter((c) => !context.schoolId || c.schoolId === context.schoolId)
-  const explicit = query.classId !== undefined || query.selection === '1'
-  const ids = Array.isArray(query.classId) ? query.classId : query.classId ? [query.classId] : []
-  const selectedIds = explicit
-    ? ids
-    : context.classSectionId
-      ? [context.classSectionId]
-      : context.schoolId
-        ? classes.map((c) => c.id)
-        : []
-  const selected = classes.filter((c) => selectedIds.includes(c.id))
-  const restoredDraft = parsePlanningDraft(query.planningDraft)
-  const requestKey = restoredDraft ?? randomUUID()
-  const planningReturn: PlanningReturn = {
-    planning: '1',
-    planningDraft: requestKey,
-    planningClassIds: selected.map((c) => c.id),
+  const selected = definitions.find((run) => run.id === query.workshopDefinitionId)
+  const context = new URLSearchParams({ step: 'plan' })
+  for (const key of ['week', 'classSectionId', 'batch', 'filter', 'schoolId', 'month', 'error']) {
+    const value = query[key]
+    if (typeof value === 'string' && value.length <= 1000) context.set(key, value)
   }
-  const rows = selected.flatMap((cls) =>
-    cls.meetings.length
-      ? Array.from(
-          {
-            length: Math.max(
-              0,
-              cls.monthlyCadence -
-                workshops.filter((w) => w.classSectionId === cls.id && w.status !== 'CANCELLED')
-                  .length
-            ),
-          },
-          (_, index) => ({
-            cls: {
-              ...cls,
-              busy: workshops
-                .filter(
-                  (w) => w.status !== 'CANCELLED' && w.classSection.teacherId === cls.teacherId
-                )
-                .map((w) => ({
-                  start: w.scheduledStart.toISOString(),
-                  end: w.scheduledEnd.toISOString(),
-                })),
-            },
-            index,
-          })
-        )
-      : []
-  )
+  if (query.sessionId !== undefined) {
+    const ids = (Array.isArray(query.sessionId) ? query.sessionId : [query.sessionId])
+      .filter((id) => id.length > 0 && id.length <= 200)
+      .slice(0, 200)
+    // Preserve an explicit empty scope instead of opening the full workshop.
+    for (const id of ids.length ? ids : ['unavailable']) context.append('sessionId', id)
+  }
+  if (selected)
+    redirect(`/admin/workshop-definitions/${encodeURIComponent(selected.id)}?${context}`)
   return (
     <main className="page-content">
       <PageHeader
-        eyebrow="Schedule workspace"
-        title="Plan monthly workshops"
-        description="Choose classes, then select dates within their recorded availability."
-      >
-        <Link className="text-sm underline" href={schedulingHref('/admin/workshops', context)}>
-          ← Back to workshops
-        </Link>
-      </PageHeader>
-      <FormError message={typeof query.error === 'string' ? query.error : warning} />
-      <Panel title="1. Choose the month and classes">
-        <form method="get" className="space-y-4">
-          <input type="hidden" name="preview" value="1" />
-          <input type="hidden" name="selection" value="1" />
-          {Object.entries(context)
-            .filter(([key]) => key !== 'month')
-            .map(([key, value]) => (
-              <input type="hidden" key={key} name={key} value={value} />
-            ))}
-          <label className="field max-w-xs">
-            Planning month
-            <input
-              type="month"
-              name="month"
-              required
-              defaultValue={context.month}
-              className="input"
-            />
-          </label>
-          <ClassSelection
-            classes={classes.map((c) => ({
-              id: c.id,
-              label: c.name + ' · ' + c.school.name + ' · target ' + c.monthlyCadence,
-            }))}
-            selected={query.selection === '1' && !explicit ? [] : selectedIds}
-          />
-          <button className={buttonClasses()}>Preview slots</button>
-        </form>
-      </Panel>
-      {query.preview === '1' && (
-        <Panel
-          title={'2. Missing occurrences for ' + context.month}
-          description={rows.length + ' workshop slots ready to date.'}
-        >
-          {selected.length === 0 ? (
-            <p>Select at least one class.</p>
-          ) : (
-            <>
-              <ul className="mb-4 space-y-2 text-sm">
-                {selected.map((cls) => (
-                  <li key={cls.id}>
-                    {cls.name}:{' '}
-                    {
-                      workshops.filter(
-                        (w) => w.classSectionId === cls.id && w.status !== 'CANCELLED'
-                      ).length
-                    }{' '}
-                    planned/delivered of {cls.monthlyCadence};{' '}
-                    {
-                      workshops.filter(
-                        (w) => w.classSectionId === cls.id && w.status === 'CANCELLED'
-                      ).length
-                    }{' '}
-                    cancelled.{' '}
-                    {!cls.meetings.length && (
-                      <Link
-                        className="text-amber-800 underline"
-                        href={classEditPlanningHref(cls.id, context, planningReturn)}
-                      >
-                        Add class availability before planning.
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {rows.length ? (
-                <PlanningForm
-                  key={context.month + selected.map((c) => c.id).join(',')}
-                  context={context}
-                  requestKey={requestKey}
-                  selectedClassIds={planningReturn.planningClassIds}
-                  restoreDraft={!!restoredDraft}
-                  rows={rows}
-                />
-              ) : (
-                <p>No missing occurrences can be planned from the current selection.</p>
-              )}
-            </>
-          )}
-        </Panel>
+        eyebrow="Workshop planning"
+        title="Choose a workshop"
+        description="Plan dates, staff sessions and publish from one workshop workspace."
+      />
+      <FormError message={typeof query.error === 'string' ? query.error : undefined} />
+      {definitions.length ? (
+        <ul className="space-y-3">
+          {definitions.map((run) => (
+            <li key={run.id} className="rounded-xl border border-slate-200 bg-white p-4">
+              <Link
+                className="font-semibold underline"
+                href={`/admin/workshop-definitions/${encodeURIComponent(run.id)}?${context}`}
+              >
+                {run.title}
+              </Link>
+              <p className="mt-1 text-sm text-slate-600">{deliveryWindowLabel(run)}</p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>
+          No workshops yet.{' '}
+          <Link className="underline" href="/admin/workshop-definitions?create=1#create-workshop">
+            Create a workshop
+          </Link>
+          .
+        </p>
       )}
     </main>
   )

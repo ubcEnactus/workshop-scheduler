@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { monthSchema } from '@/lib/schemas/workshops'
-import { vancouverMonthKey } from '@/lib/time'
+import { isCalendarDate, vancouverMonthKey } from '@/lib/time'
 
 const optionalId = z.string().min(1).max(200).optional()
+const optionalDate = z.string().refine(isCalendarDate).optional()
 export const scheduleViewSchema = z.enum([
   'all',
   'draft',
@@ -15,6 +16,9 @@ export const schedulingContextSchema = z.object({
   month: monthSchema,
   schoolId: optionalId,
   classSectionId: optionalId,
+  workshopDefinitionId: optionalId,
+  batch: optionalId,
+  week: optionalDate,
   view: scheduleViewSchema.optional(),
 })
 export type SchedulingContext = z.infer<typeof schedulingContextSchema>
@@ -27,11 +31,21 @@ export function parseSchedulingContext(
   const school = optionalId.safeParse(query.schoolId || undefined)
   const cls = optionalId.safeParse(query.classSectionId || undefined)
   const view = scheduleViewSchema.safeParse(query.view)
+  const workshop = optionalId.safeParse(query.workshopDefinitionId || undefined)
+  const batch = optionalId.safeParse(query.batch || undefined)
+  const week = optionalDate.safeParse(query.week || undefined)
   return {
-    month: month.success ? month.data : fallbackMonth,
+    month: month.success
+      ? month.data
+      : week.success && week.data
+        ? week.data.slice(0, 7)
+        : fallbackMonth,
     ...(school.success && school.data ? { schoolId: school.data } : {}),
     ...(cls.success && cls.data ? { classSectionId: cls.data } : {}),
     ...(view.success ? { view: view.data } : {}),
+    ...(workshop.success && workshop.data ? { workshopDefinitionId: workshop.data } : {}),
+    ...(batch.success && batch.data ? { batch: batch.data } : {}),
+    ...(week.success && week.data ? { week: week.data } : {}),
   }
 }
 
@@ -56,7 +70,7 @@ export function normalizeSchedulingContext(
     )
   ) {
     delete context.classSectionId
-    warnings.push('That class is unavailable for this school. The class filter was cleared.')
+    warnings.push('That teacher is unavailable for this school. The teacher filter was cleared.')
   }
   if (query.view && !scheduleViewSchema.safeParse(query.view).success)
     warnings.push('Unknown schedule view. Showing all workshops.')
@@ -77,16 +91,18 @@ export function schedulingHref(
 export function readSchedulingContext(form: FormData, fallbackMonth?: string) {
   return parseSchedulingContext(
     Object.fromEntries(
-      ['month', 'schoolId', 'classSectionId', 'view'].map((key) => [
-        key,
-        form.get(
-          key === 'schoolId' && form.has('returnSchoolId')
-            ? 'returnSchoolId'
-            : key === 'classSectionId' && form.has('returnClassSectionId')
-              ? 'returnClassSectionId'
-              : key
-        ),
-      ])
+      ['month', 'schoolId', 'classSectionId', 'view', 'workshopDefinitionId', 'batch', 'week'].map(
+        (key) => [
+          key,
+          form.get(
+            key === 'schoolId' && form.has('returnSchoolId')
+              ? 'returnSchoolId'
+              : key === 'classSectionId' && form.has('returnClassSectionId')
+                ? 'returnClassSectionId'
+                : key
+          ),
+        ]
+      )
     ),
     fallbackMonth
   )

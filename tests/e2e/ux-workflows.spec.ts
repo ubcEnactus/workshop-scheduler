@@ -1,3 +1,4 @@
+import { createSessionFixture, addCandidateFixture } from '../fixtures'
 import { mkdir } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
@@ -10,12 +11,14 @@ test.afterAll(async () => {
 })
 async function ready() {
   const f = await resetFixtures()
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { minimumGapDays: 1 } })
-  await prisma.monthlyPAQuota.create({ data: { paId: f.pa.id, month: '2027-01', quota: 5 } })
   await prisma.availability.createMany({
-    data: [600, 630].map((startMin) => ({ userId: f.pa.id, dayOfWeek: 0, startMin })),
+    data: [600, 615, 630, 645].map((startMin) => ({
+      userId: f.pa.id,
+      dayOfWeek: 0,
+      startMin,
+    })),
   })
-  const workshop = await prisma.workshop.create({
+  const workshop = await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       scheduledStart: vancouverToUtc('2027-01-04', 600),
@@ -26,48 +29,108 @@ async function ready() {
   })
   return { ...f, workshop }
 }
-test('month and filters survive planning, sidebar, matching, quotas, Back and reload', async ({
+test('auto-fills the saved workshop draft and reaches availability and workload from PAs', async ({
   page,
 }) => {
   const f = await ready()
+  const definitionId = (
+    await prisma.workshopSession.findUniqueOrThrow({
+      where: { id: f.workshop.id },
+      select: { classWorkshop: { select: { workshopDefinitionId: true } } },
+    })
+  ).classWorkshop.workshopDefinitionId
   await login(page, f.admin.email, 'admin')
-  await page.goto('/admin/workshops?month=2027-01')
-  await page.getByLabel('School filter').selectOption(f.school.id)
-  await expect(page).toHaveURL(new RegExp('schoolId=' + f.school.id))
-  await page.getByLabel('Class filter').selectOption(f.cls.id)
-  await expect(page).toHaveURL(new RegExp('classSectionId=' + f.cls.id))
-  await page.getByRole('link', { name: 'Plan monthly workshops', exact: true }).click()
-  await expect(page.getByRole('checkbox', { name: /Fixture Biology/ })).toBeChecked()
-  await expect(page.getByRole('checkbox', { name: /Fixture Chemistry/ })).not.toBeChecked()
+  await page.goto(`/admin/workshop-definitions/${definitionId}`)
   await page
-    .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('link', { name: 'Assign PAs', exact: true })
+    .getByRole('navigation', { name: 'Workshop workflow' })
+    .getByRole('link', { name: '2. Staff', exact: true })
     .click()
-  await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-01')
-  await expect(page.getByRole('checkbox', { name: /Fixture Biology/ })).toBeChecked()
-  await expect(page.getByRole('checkbox', { name: /Fixture Chemistry/ })).not.toBeChecked()
-  await page.getByRole('button', { name: 'Preview PA assignments' }).click()
-  await page.getByRole('button', { name: 'Apply PA assignments' }).click()
-  await expect(page).toHaveURL(new RegExp('classSectionId=' + f.cls.id))
-  await page.getByRole('link', { name: 'PA quotas and assignment gap', exact: true }).click()
-  await expect(page.getByLabel('Quota month')).toHaveValue('2027-01')
-  await page.getByRole('button', { name: 'Save gap', exact: true }).click()
-  await expect(page).toHaveURL(new RegExp('schoolId=' + f.school.id))
-  await page.getByRole('link', { name: 'Back to workshops' }).click()
-  await expect(page).toHaveURL(/\/admin\/workshops\?/)
-  await page.reload()
-  await expect(page.getByLabel('Class filter')).toHaveValue(f.cls.id)
-  await page.getByRole('link', { name: 'Next month' }).click()
-  await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-02')
+  const draft = page.locator(`#session-${f.workshop.id}`)
+  await expect(draft.getByRole('heading', { name: 'Fixture Biology' })).toBeVisible()
+  await expect(draft.getByText(/Fixture School/)).toBeVisible()
+  await page.getByRole('button', { name: 'Auto-fill missing PAs (1)', exact: true }).click()
+  await expect(draft.getByText('1 assigned · 1 required')).toBeVisible()
+  expect(
+    await prisma.assignment.count({
+      where: { workshopSessionId: f.workshop.id, source: 'AUTOMATIC' },
+    })
+  ).toBe(1)
   await expect(page).toHaveURL(
-    (url) =>
-      url.pathname === '/admin/workshops' &&
-      url.searchParams.get('month') === '2027-02' &&
-      url.searchParams.get('schoolId') === f.school.id &&
-      url.searchParams.get('classSectionId') === f.cls.id
+    new RegExp(`/admin/workshop-definitions/${definitionId}\\?step=staff`)
   )
-  await page.goBack()
-  await expect(page.getByLabel('Month', { exact: true })).toHaveValue('2027-01')
+  await page.goto('/admin/pas')
+  await page.getByRole('link', { name: 'Availability & workload', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Availability & workload', exact: true })
+  ).toBeVisible()
+  await expect(page.getByText(/Monthly quotas are not required for assignment/)).toBeVisible()
+  await expect(page.getByRole('row', { name: /Fixture PA/ })).toContainText(
+    '4 effective 15-minute slot records'
+  )
+  await page.getByRole('link', { name: 'Calendar', exact: true }).last().click()
+  await expect(page).toHaveURL(/\/admin\/workshops\?/)
+})
+
+test('finishing a needs-PAs row keeps it in Publish and retains exact session scope', async ({
+  page,
+}) => {
+  const f = await ready()
+  const { workshopDefinitionId } = await prisma.classWorkshop.findUniqueOrThrow({
+    where: { id: f.workshop.classWorkshopId },
+  })
+  const otherEnrollment = await prisma.classWorkshop.create({
+    data: {
+      workshopDefinitionId,
+      classSectionId: f.sibling.id,
+      availabilitySlots: {
+        create: {
+          start: vancouverToUtc('2027-01-11', 600),
+          end: vancouverToUtc('2027-01-11', 660),
+        },
+      },
+    },
+  })
+  const other = await prisma.workshopSession.create({
+    data: {
+      classWorkshopId: otherEnrollment.id,
+      scheduledStart: vancouverToUtc('2027-01-11', 600),
+      scheduledEnd: vancouverToUtc('2027-01-11', 660),
+      minPAs: 1,
+      maxPAs: 1,
+      assignments: { create: { paId: f.pa.id, status: 'DRAFT', source: 'MANUAL' } },
+    },
+  })
+  await login(page, f.admin.email, 'admin')
+  await page.goto(
+    `/admin/workshop-definitions/${workshopDefinitionId}?step=staff&filter=needs-pas&sessionId=${f.workshop.id}&week=2027-01-04`
+  )
+  const target = page.locator(`#session-${f.workshop.id}`)
+  await target.getByRole('button', { name: 'Assign Fixture PA', exact: true }).click()
+  await expect(target.getByText('Ready to publish', { exact: true })).toBeVisible()
+  await expect(target.getByRole('button', { name: 'Remove Fixture PA', exact: true })).toBeVisible()
+  await expect(page.locator(`#session-${other.id}`)).toHaveCount(0)
+  await page
+    .getByRole('navigation', { name: 'Workshop workflow' })
+    .getByRole('link', { name: '3. Publish', exact: true })
+    .click()
+  await expect(page).toHaveURL(
+    (url) => url.searchParams.get('step') === 'publish' && !url.searchParams.has('filter')
+  )
+  const url = new URL(page.url())
+  expect(url.searchParams.get('filter')).toBeNull()
+  expect(url.searchParams.getAll('sessionId')).toEqual([f.workshop.id])
+  expect(url.searchParams.get('week')).toBe('2027-01-04')
+  await expect(target.getByText('Ready to publish', { exact: true })).toBeVisible()
+  await expect(page.locator(`#session-${other.id}`)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Select all ready', exact: true }).click()
+  await page.getByRole('button', { name: 'Publish 1 session', exact: true }).click()
+  await expect(page.getByText(/^1 teacher session published\./)).toBeVisible()
+  expect(
+    await prisma.workshopSession.findUniqueOrThrow({ where: { id: f.workshop.id } })
+  ).toMatchObject({ status: 'PUBLISHED' })
+  expect(await prisma.workshopSession.findUniqueOrThrow({ where: { id: other.id } })).toMatchObject(
+    { status: 'DRAFT', version: other.version }
+  )
 })
 test('staffs in place, restores keyboard focus and publishes through a reviewed selection', async ({
   page,
@@ -83,7 +146,7 @@ test('staffs in place, restores keyboard focus and publishes through a reviewed 
   const dialog = page.getByRole('dialog', { name: 'Staff Fixture Biology', exact: true })
   await dialog.getByRole('button', { name: 'Close', exact: true }).focus()
   await page.keyboard.press('Shift+Tab')
-  await expect(dialog.locator('summary')).toBeFocused()
+  await expect(dialog.locator('summary').filter({ hasText: /^Blocked PAs \(0\)$/ })).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(dialog.getByRole('button', { name: 'Close', exact: true })).toBeFocused()
   await dialog.getByRole('button', { name: 'Assign Fixture PA', exact: true }).click()
@@ -96,11 +159,11 @@ test('staffs in place, restores keyboard focus and publishes through a reviewed 
   await page.getByRole('checkbox', { name: /Select Fixture Biology .* for publication/ }).check()
   await page.getByRole('button', { name: 'Review publication (1)' }).click()
   await expect(page.getByRole('dialog')).toContainText('Ready to publish')
-  await page.getByRole('button', { name: 'Publish selected workshops' }).click()
-  await expect(page.getByText('1 workshop published.', { exact: true })).toBeVisible()
-  expect((await prisma.workshop.findUniqueOrThrow({ where: { id: f.workshop.id } })).status).toBe(
-    'PUBLISHED'
-  )
+  await page.getByRole('button', { name: 'Publish selected teacher sessions' }).click()
+  await expect(page.getByText(/^1 teacher session published\./)).toBeVisible()
+  expect(
+    (await prisma.workshopSession.findUniqueOrThrow({ where: { id: f.workshop.id } })).status
+  ).toBe('PUBLISHED')
   await page.screenshot({ path: 'work/ux-implementation/month-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -118,9 +181,9 @@ test('bulk review blocks unstaffed drafts and recovers from a stale eligibility 
 }) => {
   const f = await ready()
   await prisma.assignment.create({
-    data: { workshopId: f.workshop.id, paId: f.pa.id, status: 'DRAFT', source: 'MANUAL' },
+    data: { workshopSessionId: f.workshop.id, paId: f.pa.id, status: 'DRAFT', source: 'MANUAL' },
   })
-  await prisma.workshop.create({
+  await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       scheduledStart: vancouverToUtc('2027-01-11', 600),
@@ -135,63 +198,104 @@ test('bulk review blocks unstaffed drafts and recovers from a stale eligibility 
     .getByRole('checkbox', { name: /Select Fixture Biology .*Jan 11.* for publication/ })
     .check()
   await page.getByRole('button', { name: 'Review publication (1)' }).click()
-  await expect(page.getByRole('button', { name: 'Publish selected workshops' })).toBeDisabled()
+  await expect(
+    page.getByRole('button', { name: 'Publish selected teacher sessions' })
+  ).toBeDisabled()
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Select ready drafts', exact: true }).click()
   await expect(
     page.getByRole('checkbox', { name: /Select Fixture Biology .*Jan 11.* for publication/ })
   ).not.toBeChecked()
   await page.getByRole('button', { name: 'Review publication (1)' }).click()
-  await prisma.monthlyPAQuota.update({
-    where: { paId_month: { paId: f.pa.id, month: '2027-01' } },
-    data: { quota: 4 },
+  await prisma.availability.create({
+    data: { userId: f.pa.id, dayOfWeek: 0, startMin: 660 },
   })
-  await page.getByRole('button', { name: 'Publish selected workshops' }).click()
+  await page.getByRole('button', { name: 'Publish selected teacher sessions' }).click()
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('eligibility changed')
-  expect(await prisma.workshop.count({ where: { status: 'PUBLISHED' } })).toBe(0)
-  await page.getByRole('button', { name: 'Reload schedule', exact: true }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible()
+  expect(await prisma.workshopSession.count({ where: { status: 'PUBLISHED' } })).toBe(0)
+  let releaseRefresh = () => {}
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  let refreshRequested = false
+  await page.route('**/admin/workshops?**', async (route) => {
+    if (route.request().headers()['rsc'] !== '1') return route.continue()
+    const response = await route.fetch()
+    refreshRequested = true
+    await refreshGate
+    await route.fulfill({ response })
+  })
+  try {
+    await page.getByRole('button', { name: 'Reload schedule', exact: true }).click()
+    await expect(page.getByRole('dialog')).not.toBeVisible()
+    await expect.poll(() => refreshRequested).toBe(true)
+    await expect(page.getByRole('button', { name: 'Review publication (1)' })).toBeDisabled()
+    await expect(
+      page.getByRole('button', { name: 'Staff Fixture Biology', exact: true }).first()
+    ).toBeDisabled()
+  } finally {
+    releaseRefresh()
+  }
+  await expect(page.getByRole('button', { name: 'Review publication (1)' })).toBeEnabled()
+  await page.unroute('**/admin/workshops?**')
   await page.getByRole('button', { name: 'Staff Fixture Biology', exact: true }).first().click()
   await expect(page.getByRole('dialog')).toContainText('Assigned PAs (1/1–1)')
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Review publication (1)' }).click()
-  await page.getByRole('button', { name: 'Publish selected workshops' }).click()
-  await expect(page.getByText('1 workshop published.', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Publish selected teacher sessions' }).click()
+  await expect(page.getByText(/^1 teacher session published\./)).toBeVisible()
   await expect(page.getByRole('heading', { name: /Monthly schedule/ })).toBeFocused()
-  expect(await prisma.workshop.count({ where: { status: 'PUBLISHED' } })).toBe(1)
+  expect(await prisma.workshopSession.count({ where: { status: 'PUBLISHED' } })).toBe(1)
 })
-test('quota copy is editable, invalid rows keep inputs, and stale edits cannot overwrite data', async ({
-  page,
-}) => {
+test('auto-fill needs no quota and ranks the lower lifetime workload first', async ({ page }) => {
   const f = await ready()
-  await prisma.monthlyPAQuota.create({ data: { paId: f.pa.id, month: '2026-12', quota: 8 } })
+  const lessAssigned = await prisma.user.create({
+    data: { role: 'PA', name: 'Fairness PA', email: 'fairness-pa@fixture.local' },
+  })
+  await prisma.availability.createMany({
+    data: [600, 615, 630, 645].map((startMin) => ({
+      userId: lessAssigned.id,
+      dayOfWeek: 0,
+      startMin,
+    })),
+  })
+  await createSessionFixture({
+    data: {
+      classSectionId: f.cls.id,
+      status: 'COMPLETED',
+      scheduledStart: vancouverToUtc('2026-12-07', 600),
+      scheduledEnd: vancouverToUtc('2026-12-07', 660),
+      assignments: { create: { paId: f.pa.id, status: 'PUBLISHED' } },
+    },
+  })
   await login(page, f.admin.email, 'admin')
   await page.goto('/admin/staffing?month=2027-01')
-  const quota = page.getByLabel('Quota for Fixture PA')
-  await page.getByRole('button', { name: 'Copy previous month' }).click()
-  await expect(quota).toHaveValue('8')
-  expect(
-    (await prisma.monthlyPAQuota.findFirstOrThrow({ where: { month: '2027-01' } })).quota
-  ).toBe(5)
-  await page.getByRole('button', { name: 'Undo copy' }).click()
-  await expect(quota).toHaveValue('5')
-  await quota.fill('-1')
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
-  await expect(page.getByRole('main').getByRole('alert')).toContainText('No changes were saved')
-  await expect(quota).toHaveValue('-1')
-  await quota.fill('0')
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
-  await expect(page.getByText(/Settings saved/)).toBeVisible()
-  await expect(quota).toHaveValue('0')
-  await prisma.schedulingSettings.update({ where: { id: 1 }, data: { revision: { increment: 1 } } })
-  await quota.fill('9')
-  await page.getByRole('button', { name: 'Save changes', exact: true }).click()
-  await expect(page.getByRole('main').getByRole('alert')).toContainText(
-    'changed while you were editing'
+  await expect(page.getByText(/Monthly quotas are not required for assignment/)).toBeVisible()
+  await expect(page.getByText(/Lifetime totals guide fair ranking only/)).toBeVisible()
+  await expect(page.getByText(/Quota/)).toHaveCount(0)
+  const { workshopDefinitionId } = await prisma.classWorkshop.findUniqueOrThrow({
+    where: { id: f.workshop.classWorkshopId },
+  })
+  await page.goto(`/admin/workshop-definitions/${workshopDefinitionId}?step=staff`)
+  await page.getByRole('button', { name: 'Auto-fill missing PAs (1)', exact: true }).click()
+  const target = page.locator(`#session-${f.workshop.id}`)
+  await expect(
+    target.getByRole('button', { name: 'Remove Fairness PA', exact: true })
+  ).toBeVisible()
+  await expect(target.getByRole('button', { name: 'Remove Fixture PA', exact: true })).toHaveCount(
+    0
   )
-  await expect(quota).toHaveValue('9')
+  await expect
+    .poll(async () =>
+      prisma.assignment.count({
+        where: { workshopSessionId: f.workshop.id, paId: lessAssigned.id, status: 'DRAFT' },
+      })
+    )
+    .toBe(1)
   expect(
-    (await prisma.monthlyPAQuota.findFirstOrThrow({ where: { month: '2027-01' } })).quota
+    await prisma.monthlyPAQuota.count({
+      where: { paId: { in: [f.pa.id, lessAssigned.id] } },
+    })
   ).toBe(0)
 })
 test('mobile PA ranges copy across the week, support undo and persist without the grid', async ({
@@ -201,9 +305,10 @@ test('mobile PA ranges copy across the week, support undo and persist without th
   await login(page, f.pa.email, 'pa')
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/pa/availability')
-  await page.getByLabel('From', { exact: true }).selectOption('540')
-  await page.getByLabel('Until', { exact: true }).selectOption('720')
-  await page.getByRole('button', { name: 'Add time range', exact: true }).click()
+  const editor = page.getByRole('region', { name: 'Availability editor' })
+  await editor.getByLabel('From', { exact: true }).selectOption('540')
+  await editor.getByLabel('Until', { exact: true }).selectOption('720')
+  await editor.getByRole('button', { name: 'Add time range', exact: true }).click()
   for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday'])
     await page.getByRole('checkbox', { name: day, exact: true }).check()
   await page.getByRole('button', { name: 'Copy to selected days' }).click()
@@ -211,7 +316,7 @@ test('mobile PA ranges copy across the week, support undo and persist without th
   await page.getByRole('button', { name: 'Undo last edit' }).click()
   await page.getByRole('button', { name: 'Save availability', exact: true }).click()
   await expect(page.getByText('Availability saved.', { exact: true })).toBeVisible()
-  expect(await prisma.availability.count()).toBe(30)
+  expect(await prisma.availability.count()).toBe(60)
   await page.reload()
   await expect(page.getByText(/15 hours per week/)).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -222,57 +327,105 @@ test('mobile PA ranges copy across the week, support undo and persist without th
   await page.getByRole('button', { name: 'Save availability', exact: true }).click()
   await expect.poll(() => prisma.availability.count()).toBe(0)
 })
-test('planning keeps all entered dates after overlap and uses explicit suggestions', async ({
-  page,
-}) => {
+test('planning suggests and saves intentional class and teacher overlaps', async ({ page }) => {
   const f = await resetFixtures()
-  await login(page, f.admin.email, 'admin')
-  await page.goto('/admin/workshops/plan?month=2027-01&schoolId=' + f.school.id)
-  await page.getByRole('button', { name: 'Preview slots' }).click()
-  const dates = page.locator('input[name="date"]'),
-    times = page.locator('input[name="startTime"]')
-  await expect(dates).toHaveCount(2)
-  await page.getByLabel('Suggested date and time', { exact: true }).nth(0).selectOption('0')
-  await expect(dates.nth(0)).toHaveValue('2027-01-04')
-  await expect(times.nth(0)).toHaveValue('09:00')
-  await dates.nth(1).fill('2027-01-04')
-  await times.nth(1).fill('09:00')
-  await page.getByRole('button', { name: 'Create planned workshops' }).click()
-  await expect(page.getByRole('main').getByRole('alert')).toContainText('overlapping')
-  await expect(dates.nth(0)).toHaveValue('2027-01-04')
-  await expect(dates.nth(1)).toHaveValue('2027-01-04')
-  expect(await prisma.workshop.count()).toBe(0)
-  await times.nth(1).fill('11:00')
-  await page.getByRole('button', { name: 'Create planned workshops' }).click()
-  await expect(page).toHaveURL(/batch=/)
-  expect(await prisma.workshop.count()).toBe(2)
-})
-test('ad hoc creation uses class defaults, keeps invalid input and handles missing filters', async ({
-  page,
-}) => {
-  const f = await resetFixtures()
-  await prisma.classSection.update({
-    where: { id: f.cls.id },
-    data: { defaultDurationMinutes: 90, defaultMinPAs: 2, defaultMaxPAs: 4 },
+  await prisma.classMeeting.deleteMany({
+    where: { classSectionId: { in: [f.cls.id, f.sibling.id] } },
   })
+  await prisma.workshopDefinition.update({
+    where: { id: 'fixture-definition-1' },
+    data: {
+      deliveryStartsOn: new Date('2027-01-04T00:00:00.000Z'),
+      deliveryEndsOn: new Date('2027-01-11T00:00:00.000Z'),
+    },
+  })
+  await addCandidateFixture(f.cls.id, '2027-01-04')
+  await addCandidateFixture(f.sibling.id, '2027-01-04')
+  await addCandidateFixture(f.sibling.id, '2027-01-05')
+  await createSessionFixture({
+    data: {
+      classSectionId: f.cls.id,
+      scheduledStart: vancouverToUtc('2027-01-04', 600),
+      scheduledEnd: vancouverToUtc('2027-01-04', 660),
+    },
+  })
+  await login(page, f.admin.email, 'admin')
+  await page.goto('/admin/workshops/plan?workshopDefinitionId=fixture-definition-1')
+  const biology = page.getByLabel('Fixture School · Fixture Biology date and time', {
+    exact: true,
+  })
+  const chemistry = page.getByLabel('Fixture School · Fixture Chemistry date and time', {
+    exact: true,
+  })
+  const biologyConflict = await biology
+    .locator('option')
+    .filter({ hasText: /Jan 4.*10:00/ })
+    .first()
+    .getAttribute('value')
+  const chemistryConflict = await chemistry
+    .locator('option')
+    .filter({ hasText: /Jan 4.*10:00/ })
+    .first()
+    .getAttribute('value')
+  expect(biologyConflict).not.toBeNull()
+  expect(chemistryConflict).not.toBeNull()
+  await biology.selectOption(biologyConflict!)
+  await chemistry.selectOption(chemistryConflict!)
+  await page.getByRole('button', { name: 'Save dates & continue', exact: true }).click()
+  await expect(page).toHaveURL(/batch=/)
+  expect(
+    await prisma.workshopSession.count({
+      where: {
+        scheduledStart: vancouverToUtc('2027-01-04', 600),
+        scheduledEnd: vancouverToUtc('2027-01-04', 660),
+      },
+    })
+  ).toBe(3)
+})
+
+test('ad hoc creation keeps run defaults through host selection and preserves invalid input', async ({
+  page,
+}) => {
+  const f = await resetFixtures()
+  await Promise.all([
+    prisma.classSection.update({
+      where: { id: f.cls.id },
+      data: { defaultDurationMinutes: 90, defaultMinPAs: 4, defaultMaxPAs: 6 },
+    }),
+    prisma.workshopDefinition.update({
+      where: { id: 'fixture-definition-1' },
+      data: { durationMinutes: 75, defaultMinPAs: 2, defaultMaxPAs: 3 },
+    }),
+  ])
   await login(page, f.admin.email, 'admin')
   await page.goto('/admin/workshops?month=2027-01&schoolId=missing&classSectionId=missing')
   await expect(page.getByRole('main').getByRole('alert')).toContainText('filter was cleared')
-  await page.getByRole('link', { name: 'Book workshop', exact: true }).click()
-  await page.getByLabel('Use a saved class').selectOption(f.cls.id)
+  await page
+    .getByRole('link', { name: 'Schedule a confirmed teacher session', exact: true })
+    .click()
+  await page.getByLabel('Workshop', { exact: true }).selectOption('fixture-definition-1')
+  await page.getByLabel('Choose or add a school').selectOption(f.school.id)
+  await page.getByLabel('Choose or add a teacher').selectOption(f.teacher.id)
   await page.getByText('Advanced staffing', { exact: true }).click()
   await expect(page.getByLabel('Minimum PAs', { exact: true })).toHaveValue('2')
-  await expect(page.getByLabel('Maximum PAs', { exact: true })).toHaveValue('4')
+  await expect(page.getByLabel('Maximum PAs', { exact: true })).toHaveValue('3')
   await page.getByLabel('Vancouver date').fill('2027-01-04')
   await page.getByLabel('Start time', { exact: true }).fill('09:00')
-  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('10:30')
+  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('10:15')
+  await page.getByLabel('Choose or add a school').selectOption(f.otherSchool.id)
+  await expect(page.getByLabel('Minimum PAs', { exact: true })).toHaveValue('2')
+  await expect(page.getByLabel('Maximum PAs', { exact: true })).toHaveValue('3')
+  await expect(page.getByLabel('End time', { exact: true })).toHaveValue('10:15')
+  await page.getByLabel('Workshop', { exact: true }).selectOption('fixture-definition-1')
+  await page.getByLabel('Choose or add a school').selectOption(f.school.id)
+  await page.getByLabel('Choose or add a teacher').selectOption(f.teacher.id)
   await page.getByLabel('End time', { exact: true }).fill('08:00')
-  await page.getByRole('button', { name: 'Book workshop', exact: true }).click()
+  await page.getByRole('button', { name: 'Schedule teacher session', exact: true }).click()
   await expect(page.getByRole('main').getByRole('alert').last()).toContainText(
     'End time must be after'
   )
   await expect(page.getByLabel('End time', { exact: true })).toHaveValue('08:00')
   await page.getByLabel('End time', { exact: true }).fill('10:30')
-  await page.getByRole('button', { name: 'Book workshop', exact: true }).click()
+  await page.getByRole('button', { name: 'Schedule teacher session', exact: true }).click()
   await expect(page.getByText('Draft saved.', { exact: true })).toBeVisible()
 })

@@ -1,3 +1,4 @@
+import { createSessionFixture } from '../fixtures'
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { prisma } from '../../src/lib/db'
@@ -8,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 
 async function audit(page: Page, label: string) {
   await expect(page.locator('main')).toHaveCount(1)
+  await expect(page).toHaveTitle('Workshop Scheduler')
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
     .analyze()
@@ -43,11 +45,11 @@ async function setup() {
   await prisma.user.update({ where: { id: f.teacher.id }, data: { name: 'Jordan Lee' } })
   await prisma.school.update({
     where: { id: f.school.id },
-    data: { name: 'Kitsilano Secondary', district: 'Vancouver' },
+    data: { name: 'Kitsilano Secondary' },
   })
   await prisma.school.update({
     where: { id: f.otherSchool.id },
-    data: { name: 'Burnaby North Secondary', district: 'Burnaby' },
+    data: { name: 'Burnaby North Secondary' },
   })
   await prisma.classSection.update({
     where: { id: f.cls.id },
@@ -71,7 +73,7 @@ async function setup() {
       ),
     })
   }
-  const draft = await prisma.workshop.create({
+  const draft = await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       minPAs: 2,
@@ -81,7 +83,7 @@ async function setup() {
       assignments: { create: { paId: f.pa.id, source: 'AUTOMATIC', status: 'DRAFT' } },
     },
   })
-  const published = await prisma.workshop.create({
+  const published = await createSessionFixture({
     data: {
       classSectionId: f.sibling.id,
       status: 'PUBLISHED',
@@ -92,7 +94,7 @@ async function setup() {
       assignments: { create: { paId: f.pa.id, status: 'PUBLISHED' } },
     },
   })
-  await prisma.workshop.create({
+  await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
       status: 'COMPLETED',
@@ -130,10 +132,17 @@ test('admin screens and reviews are responsive and accessible', async ({ page })
   test.setTimeout(300_000)
   const f = await setup()
   await login(page, f.admin.email, 'admin')
-  await page.goto('/admin/workshops/match?month=2027-01')
-  await page.getByRole('button', { name: 'Preview PA assignments' }).click()
-  await expect(page.getByRole('heading', { name: 'Review PA assignments' })).toBeVisible()
-  const matchPath = new URL(page.url()).pathname
+  const archived = await prisma.matchingPreview.create({
+    data: {
+      actorId: f.admin.id,
+      month: '2027-01',
+      classIds: [f.cls.id],
+      inputHash: 'historical-ui-fixture',
+      plan: [{ workshopSessionId: f.draft.id, paIds: [f.pa.id], reasons: [] }],
+      expiresAt: new Date('2020-01-01T00:00:00Z'),
+    },
+  })
+  const matchPath = `/admin/workshops/match/${archived.id}`
   await page.goto('/admin/workshops/' + f.published.id)
   await page.getByText('Cancel workshop', { exact: true }).click()
   await page
@@ -152,6 +161,8 @@ test('admin screens and reviews are responsive and accessible', async ({ page })
     ['/admin/pas/' + f.pa.id + '/edit', 'pa-edit'],
     ['/admin/classes', 'classes'],
     ['/admin/classes/' + f.cls.id + '/edit', 'class-edit'],
+    ['/admin/workshop-definitions', 'workshop-list'],
+    ['/admin/workshop-definitions?create=1', 'workshop-create'],
     ['/admin/workshops?month=2027-01', 'workshops'],
     ['/admin/workshops/' + f.draft.id, 'workshop-detail'],
     [
@@ -220,15 +231,32 @@ test('mobile navigation supports keyboard, active routes and sign out', async ({
   await expect(dialog).not.toBeVisible()
   await expect(menu).toBeFocused()
   await menu.click()
-  await dialog.getByRole('link', { name: 'Plan a month', exact: true }).click()
-  await expect(page).toHaveURL(/\/admin\/workshops\/plan\?month=/)
+  await dialog.getByRole('link', { name: 'Workshops', exact: true }).click()
+  await expect(page).toHaveURL(/\/admin\/workshop-definitions/)
   await expect(dialog).not.toBeVisible()
+  await expect(page.locator('#create-workshop')).toHaveCount(0)
+  const createWorkshop = page.getByRole('link', { name: 'Create a workshop', exact: true })
+  await createWorkshop.focus()
+  await createWorkshop.press('Enter')
+  await expect(page.locator('#create-workshop')).toBeVisible()
+  const cancelCreation = page.getByRole('link', { name: 'Cancel', exact: true })
+  await cancelCreation.focus()
+  await cancelCreation.press('Enter')
+  await expect(page.locator('#create-workshop')).toHaveCount(0)
+  await createWorkshop.click()
+  await expect(page.locator('#create-workshop')).toBeVisible()
   await menu.click()
-  await expect(dialog.getByRole('link', { name: 'Plan a month', exact: true })).toHaveAttribute(
+  await dialog.getByRole('link', { name: 'Workshops', exact: true }).click()
+  await expect(page).toHaveURL(
+    (url) => url.pathname === '/admin/workshop-definitions' && !url.searchParams.has('create')
+  )
+  await expect(page.locator('#create-workshop')).toHaveCount(0)
+  await menu.click()
+  await expect(dialog.getByRole('link', { name: 'Workshops', exact: true })).toHaveAttribute(
     'aria-current',
     'page'
   )
-  await expect(dialog.getByRole('link', { name: 'Workshops', exact: true })).not.toHaveAttribute(
+  await expect(dialog.getByRole('link', { name: 'Calendar', exact: true })).not.toHaveAttribute(
     'aria-current',
     'page'
   )
@@ -239,7 +267,9 @@ test('mobile navigation supports keyboard, active routes and sign out', async ({
   await expect(page).toHaveURL(/\/login$/)
 })
 
-test('empty directories offer direct booking without class setup', async ({ page }) => {
+test('empty directories guide class setup through school and teacher contacts', async ({
+  page,
+}) => {
   const f = await resetFixtures()
   await prisma.user.updateMany({ where: { role: 'TEACHER' }, data: { deletedAt: new Date() } })
   await prisma.school.updateMany({ data: { deletedAt: new Date() } })
@@ -255,13 +285,12 @@ test('empty directories offer direct booking without class setup', async ({ page
     await expect(page.getByRole('link', { name: 'Go to schools', exact: true })).toBeVisible()
     await audit(page, 'teachers-empty-' + size)
     await page.goto('/admin/classes')
-    await expect(page.getByRole('link', { name: 'Book workshop', exact: true })).toBeVisible()
-    await expect(
-      page.getByText(
-        'No classes yet. Book a workshop to add its school, teacher and class together.'
-      )
-    ).toBeVisible()
-    await expect(page.getByRole('link', { name: 'Go to teachers', exact: true })).toHaveCount(0)
-    await audit(page, 'classes-empty-' + size)
+    await expect(page).toHaveURL(/\/admin\/teachers$/)
+    await expect(page.getByRole('link', { name: 'Add class', exact: true })).toHaveCount(0)
+    await expect(page.getByText('No teachers yet.', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add teacher', exact: true })).toBeDisabled()
+    await page.getByRole('link', { name: 'Go to schools', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Add school', exact: true })).toBeVisible()
+    await audit(page, 'schools-empty-' + size)
   }
 })

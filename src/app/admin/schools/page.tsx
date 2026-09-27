@@ -6,21 +6,30 @@ import { SubmitButton } from '@/components/submit-button'
 import { buttonClasses } from '@/components/ui/button'
 import { PageHeader } from '@/components/ui/page-header'
 import { Panel } from '@/components/ui/panel'
-import { StatusBadge } from '@/components/ui/status-badge'
 import { requireRole } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { parseSchedulingContext, schedulingHref } from '@/lib/scheduling/navigation'
+import { isReturningToClassSetup } from '@/lib/schemas/class-setup'
 
 import { createSchool, softDeleteSchool } from './actions'
 
 export default async function SchoolsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<Record<string, string | undefined>>
 }) {
   await requireRole('ADMIN')
-  const { error } = await searchParams
+  const query = await searchParams
+  const { error, q } = query
+  const context = parseSchedulingContext(query)
+  const returnToClasses = isReturningToClassSetup(query.returnToClasses)
+  const search = q?.trim() ?? ''
   const schools = await prisma.school.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      ...(search ? { name: { contains: search, mode: 'insensitive' as const } } : {}),
+    },
+    include: { _count: { select: { teachers: true, classSections: true } } },
     orderBy: { name: 'asc' },
   })
 
@@ -29,23 +38,46 @@ export default async function SchoolsPage({
       <PageHeader
         eyebrow="Program setup"
         title="Schools"
-        description="Manage the partner schools and districts in your workshop program."
+        description="Manage partner schools. Deactivating a school keeps its history and removes it from new scheduling."
+        actions={
+          returnToClasses ? (
+            <Link
+              href={schedulingHref('/admin/classes', context, { add: '1' }) + '#add-class'}
+              className={buttonClasses({ variant: 'secondary' })}
+            >
+              Back to teacher setup
+            </Link>
+          ) : (
+            <Link
+              href={schedulingHref('/admin/teachers', context)}
+              className={buttonClasses({ variant: 'secondary' })}
+            >
+              Teachers
+            </Link>
+          )
+        }
       />
       <FormError message={error} />
 
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(18rem,0.7fr)_minmax(0,1.3fr)]">
-        <Panel
-          title="Add school"
-          description="Create a school before adding its teachers and classes."
-        >
+        <Panel title="Add school" description="Create a school before adding its teachers.">
           <form action={createSchool} className="space-y-5">
+            {returnToClasses && (
+              <>
+                <input type="hidden" name="returnToClasses" value="1" />
+                {Object.entries(context).map(([key, value]) => (
+                  <input
+                    key={key}
+                    type="hidden"
+                    name={key === 'schoolId' ? 'returnSchoolId' : key}
+                    value={value}
+                  />
+                ))}
+              </>
+            )}
             <div className="field">
               <label htmlFor="school-name">Name</label>
               <input id="school-name" name="name" required className="input" />
-            </div>
-            <div className="field">
-              <label htmlFor="school-district">District</label>
-              <input id="school-district" name="district" required className="input" />
             </div>
             <SubmitButton>Add school</SubmitButton>
           </form>
@@ -55,6 +87,23 @@ export default async function SchoolsPage({
           title="School directory"
           description={`${schools.length} active school${schools.length === 1 ? '' : 's'}`}
         >
+          <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
+            {returnToClasses && (
+              <>
+                <input type="hidden" name="returnToClasses" value="1" />
+                {Object.entries(context).map(([key, value]) => (
+                  <input key={key} type="hidden" name={key} value={value} />
+                ))}
+              </>
+            )}
+            <label className="field min-w-56 flex-1">
+              Search school name
+              <input className="input" type="search" name="q" defaultValue={search} />
+            </label>
+            <button type="submit" className={buttonClasses({ variant: 'secondary' })}>
+              Search
+            </button>
+          </form>
           {schools.length === 0 ? (
             <div className="empty-state">
               <School className="size-6" aria-hidden="true" />
@@ -70,8 +119,7 @@ export default async function SchoolsPage({
                   <thead>
                     <tr>
                       <th>School</th>
-                      <th>District</th>
-                      <th>Status</th>
+                      <th>Teachers</th>
                       <th>
                         <span className="sr-only">Actions</span>
                       </th>
@@ -80,13 +128,20 @@ export default async function SchoolsPage({
                   <tbody>
                     {schools.map((school) => (
                       <tr key={school.id}>
-                        <td className="font-semibold text-slate-900">{school.name}</td>
-                        <td>{school.district}</td>
-                        <td>
-                          <StatusBadge status="active" />
+                        <td className="font-semibold text-slate-900">
+                          <Link className="underline" href={'/admin/schools/' + school.id}>
+                            {school.name}
+                          </Link>
                         </td>
+                        <td>{school._count.teachers}</td>
                         <td>
                           <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/admin/schools/${school.id}`}
+                              className={buttonClasses({ size: 'sm' })}
+                            >
+                              Open
+                            </Link>
                             <Link
                               href={`/admin/schools/${school.id}/edit`}
                               aria-label={`Edit ${school.name}`}
@@ -99,9 +154,9 @@ export default async function SchoolsPage({
                               <SubmitButton
                                 variant="danger"
                                 size="sm"
-                                aria-label={`Delete ${school.name}`}
+                                aria-label={`Deactivate ${school.name}`}
                               >
-                                Delete
+                                Deactivate
                               </SubmitButton>
                             </form>
                           </div>

@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { freePort, runNode, startDatabase } from './local-postgres.mjs'
 
@@ -31,9 +33,14 @@ if (kind !== 'e2e-preview') {
   delete process.env.E2E_PREVIEW_DEMO
   delete process.env.VERCEL_ENV
   delete process.env.AUTH_PREVIEW_DEMO_ENABLED
+  delete process.env.E2E_HTTPS_KEY
+  delete process.env.E2E_HTTPS_CERT
 }
 if (kind === 'e2e-preview') {
   Object.assign(process.env, {
+    AUTH_URL: `https://localhost:${port}`,
+    E2E_HTTPS_KEY: path.join(root, 'localhost-key.pem'),
+    E2E_HTTPS_CERT: path.join(root, 'localhost-cert.pem'),
     E2E_PREVIEW_DEMO: 'true',
     VERCEL_ENV: 'preview',
     VERCEL_PROJECT_ID: 'prj_preview_e2e',
@@ -45,6 +52,35 @@ if (kind === 'e2e-preview') {
   })
 }
 try {
+  if (kind === 'e2e-preview') {
+    const gitOpenSsl = 'C:/Program Files/Git/usr/bin/openssl.exe'
+    const openssl =
+      process.env.OPENSSL_BIN ||
+      (process.platform === 'win32' && existsSync(gitOpenSsl) ? gitOpenSsl : 'openssl')
+    // Disposable local TLS certificate: preview cookies and email redirects
+    // must be tested over actual HTTPS, without rewriting browser responses.
+    execFileSync(
+      openssl,
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        process.env.E2E_HTTPS_KEY,
+        '-out',
+        process.env.E2E_HTTPS_CERT,
+        '-days',
+        '1',
+        '-subj',
+        '/CN=localhost',
+        '-addext',
+        'subjectAltName=DNS:localhost,IP:127.0.0.1',
+      ],
+      { windowsHide: true, stdio: 'pipe' }
+    )
+  }
   await runNode('node_modules/prisma/build/index.js', ['migrate', 'deploy'])
   // The real seed must work from scratch and be repeatable.
   await runNode('node_modules/tsx/dist/cli.mjs', ['prisma/seed.ts'])

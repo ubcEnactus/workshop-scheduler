@@ -29,7 +29,7 @@ export default async function EditSchoolPage({
       <PageHeader
         eyebrow="Schools"
         title="Edit school"
-        description={`Update ${school.name}’s name or school district.`}
+        description={`Update ${school.name}’s name.`}
         actions={
           <Link href="/admin/schools" className={buttonClasses({ variant: 'secondary' })}>
             Back to schools
@@ -39,7 +39,7 @@ export default async function EditSchoolPage({
       <FormError message={error} />
       <Panel
         title="School details"
-        description="These details appear throughout class and workshop planning."
+        description="These details appear throughout teacher and workshop planning."
         className="max-w-2xl"
       >
         <form action={updateSchool} className="space-y-5">
@@ -50,16 +50,6 @@ export default async function EditSchoolPage({
               id="school-name"
               name="name"
               defaultValue={school.name}
-              required
-              className="input"
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="school-district">District</label>
-            <input
-              id="school-district"
-              name="district"
-              defaultValue={school.district}
               required
               className="input"
             />

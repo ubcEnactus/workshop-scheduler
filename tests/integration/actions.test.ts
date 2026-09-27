@@ -1,3 +1,5 @@
+import { addCandidateFixture } from '../fixtures'
+import { createSessionFixture } from '../fixtures'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { prisma } from '../../src/lib/db'
 import { form, resetFixtures, workshopForm } from '../fixtures'
@@ -25,6 +27,10 @@ import { saveAvailability } from '../../src/app/pa/availability/actions'
 let fixtures: Awaited<ReturnType<typeof resetFixtures>>
 beforeEach(async () => {
   fixtures = await resetFixtures()
+  await addCandidateFixture(fixtures.cls.id, '2027-01-04', 'fixture-definition-1', 540, 720)
+  await addCandidateFixture(fixtures.sibling.id, '2027-01-04', 'fixture-definition-1', 540, 720)
+  await addCandidateFixture(fixtures.cls.id, '2027-02-01', 'fixture-definition-1', 540, 720)
+  await addCandidateFixture(fixtures.cls.id, '2027-01-04', 'fixture-definition-2', 540, 720)
   sessionAuth.mockResolvedValue({ user: { id: fixtures.admin.id } })
 })
 afterAll(async () => {
@@ -35,7 +41,7 @@ async function createDraft(overrides: Record<string, string | number> = {}) {
   await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id, overrides))).rejects.toThrow(
     /REDIRECT:\/admin\/workshops\/.*saved=1/
   )
-  return prisma.workshop.findFirstOrThrow({ orderBy: { createdAt: 'desc' } })
+  return prisma.workshopSession.findFirstOrThrow({ orderBy: { createdAt: 'desc' } })
 }
 
 describe('authorization at the Server Action boundary', () => {
@@ -71,6 +77,60 @@ describe('authorization at the Server Action boundary', () => {
 })
 
 describe('foundation integrity', () => {
+  it('preserves workshop context through school, teacher, and class prerequisite setup', async () => {
+    const setupContext = {
+      returnToClasses: '1',
+      month: '2027-10',
+      returnSchoolId: fixtures.school.id,
+      classSectionId: fixtures.cls.id,
+      workshopDefinitionId: 'fixture-definition-1',
+      batch: 'setup-batch',
+      week: '2027-10-04',
+    }
+    await expect(
+      schools.createSchool(form({ ...setupContext, name: 'Setup Flow School' }))
+    ).rejects.toThrow(
+      /REDIRECT:\/admin\/teachers\?.*schoolId=.*workshopDefinitionId=fixture-definition-1.*batch=setup-batch.*week=2027-10-04.*returnToClasses=1.*saved=school/
+    )
+    const school = await prisma.school.findFirstOrThrow({ where: { name: 'Setup Flow School' } })
+
+    await expect(
+      teachers.createTeacher(
+        form({
+          ...setupContext,
+          name: 'Setup Flow Teacher',
+          email: 'setup-flow-teacher@fixture.local',
+          schoolId: school.id,
+        })
+      )
+    ).rejects.toThrow(
+      /REDIRECT:\/admin\/teachers\/[^?]+\?.*schoolId=.*workshopDefinitionId=fixture-definition-1.*batch=setup-batch.*week=2027-10-04.*saved=created#availability/
+    )
+    const teacher = await prisma.user.findFirstOrThrow({
+      where: { email: 'setup-flow-teacher@fixture.local' },
+    })
+
+    await expect(
+      classes.createClassSection(
+        form({
+          month: setupContext.month,
+          schoolId: fixtures.school.id,
+          classSectionId: setupContext.classSectionId,
+          workshopDefinitionId: setupContext.workshopDefinitionId,
+          batch: setupContext.batch,
+          week: setupContext.week,
+          name: 'Setup Flow Class',
+          teacherId: teacher.id,
+        })
+      )
+    ).rejects.toThrow(
+      /REDIRECT:\/admin\/classes\/[^?]+\?.*workshopDefinitionId=fixture-definition-1.*batch=setup-batch.*week=2027-10-04.*saved=created#availability/
+    )
+    expect(
+      await prisma.classSection.count({ where: { teacherId: teacher.id, schoolId: school.id } })
+    ).toBe(1)
+  })
+
   it('keeps teacher and class schools consistent under competing admin writes', async () => {
     await Promise.allSettled([
       classes.createClassSection(
@@ -101,7 +161,7 @@ describe('foundation integrity', () => {
           schoolId: fixtures.otherSchool.id,
         })
       )
-    ).rejects.toThrow('before%20changing%20their%20school')
+    ).rejects.toThrow('preserve%20availability%20and%20workshop%20history')
     expect(
       (await prisma.user.findUniqueOrThrow({ where: { id: fixtures.teacher.id } })).schoolId
     ).toBe(fixtures.school.id)
@@ -119,27 +179,29 @@ describe('foundation integrity', () => {
       (await prisma.user.findUniqueOrThrow({ where: { id: fixtures.otherTeacher.id } })).schoolId
     ).toBe(fixtures.school.id)
   })
-  it('prevents class reassignment from changing workshop history, even when cancelled', async () => {
+  it('routes teacher reassignment through the reviewed transfer workflow', async () => {
     const draft = await createDraft()
-    await prisma.workshop.update({ where: { id: draft.id }, data: { status: 'CANCELLED' } })
+    await prisma.workshopSession.update({ where: { id: draft.id }, data: { status: 'CANCELLED' } })
     await expect(
       classes.updateClassSection(
         form({ id: fixtures.cls.id, name: 'Moved', teacherId: fixtures.otherTeacher.id })
       )
-    ).rejects.toThrow('workshop%20history')
+    ).rejects.toThrow('Each%20teacher%20owns%20their%20schedule')
     expect(
       (await prisma.classSection.findUniqueOrThrow({ where: { id: fixtures.cls.id } })).schoolId
     ).toBe(fixtures.school.id)
   })
-  it('allows class reassignment before any workshop exists', async () => {
+  it('does not allow inline class reassignment before any workshop exists', async () => {
+    await prisma.availabilitySlot.deleteMany()
+    await prisma.classWorkshop.deleteMany()
     await expect(
       classes.updateClassSection(
         form({ id: fixtures.cls.id, name: 'Moved', teacherId: fixtures.otherTeacher.id })
       )
-    ).rejects.toThrow('REDIRECT:/admin/classes')
+    ).rejects.toThrow('Each%20teacher%20owns%20their%20schedule')
     expect(
       (await prisma.classSection.findUniqueOrThrow({ where: { id: fixtures.cls.id } })).schoolId
-    ).toBe(fixtures.otherSchool.id)
+    ).toBe(fixtures.school.id)
   })
   it('validates and atomically replaces only the signed-in PA’s availability', async () => {
     const draft = await createDraft()
@@ -148,16 +210,22 @@ describe('foundation integrity', () => {
     input.append('slots', '0-600')
     input.append('slots', '0-600')
     input.append('slots', '1-630')
+    input.set('effectiveFrom', '2027-01-01')
     input.set('userId', fixtures.admin.id)
     await expect(saveAvailability(input)).rejects.toThrow('saved=1')
     expect(await prisma.availability.count({ where: { userId: fixtures.pa.id } })).toBe(2)
     expect(await prisma.availability.count({ where: { userId: fixtures.admin.id } })).toBe(0)
-    await expect(saveAvailability(form({ slots: '5-600' }))).rejects.toThrow('error=1')
+    await expect(
+      saveAvailability(form({ slots: '5-600', effectiveFrom: '2027-01-01' }))
+    ).rejects.toThrow('error=1')
     expect(await prisma.availability.count()).toBe(2)
-    await expect(saveAvailability(new FormData())).rejects.toThrow('saved=1')
+    await expect(saveAvailability(form({ effectiveFrom: '2027-01-01' }))).rejects.toThrow('saved=1')
     expect(await prisma.availability.count()).toBe(0)
     expect(
-      (await prisma.workshop.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
+      await prisma.availabilityScheduleVersion.count({ where: { userId: fixtures.pa.id } })
+    ).toBe(1)
+    expect(
+      (await prisma.workshopSession.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
     ).toEqual(draft.scheduledStart)
   })
 })
@@ -178,17 +246,17 @@ describe('dated workshops', () => {
         })
       )
     ).rejects.toThrow('saved=1')
-    const saved = await prisma.workshop.findUniqueOrThrow({ where: { id: draft.id } })
+    const saved = await prisma.workshopSession.findUniqueOrThrow({ where: { id: draft.id } })
     expect(saved.version).toBe(1)
     const january = vancouverMonthBounds('2027-01')
     expect(
-      await prisma.workshop.count({
+      await prisma.workshopSession.count({
         where: { scheduledStart: { gte: january.start, lt: january.end } },
       })
     ).toBe(0)
     const february = vancouverMonthBounds('2027-02')
     expect(
-      await prisma.workshop.count({
+      await prisma.workshopSession.count({
         where: { scheduledStart: { gte: february.start, lt: february.end } },
       })
     ).toBe(1)
@@ -196,45 +264,46 @@ describe('dated workshops', () => {
       workshops.updateWorkshop(workshopForm(fixtures.cls.id, { id: draft.id, version: 0 }))
     ).rejects.toThrow('Reload%20before%20editing')
     expect(
-      (await prisma.workshop.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
+      (await prisma.workshopSession.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
     ).toEqual(saved.scheduledStart)
   })
-  it('requires full containment within a single block and rejects class or teacher overlaps', async () => {
+  it('requires hosting availability and unique enrollment but allows class and teacher overlaps', async () => {
     await expect(
       workshops.createWorkshop(workshopForm(fixtures.cls.id, { startTime: '08:30' }))
-    ).rejects.toThrow('hosting%20block')
+    ).rejects.toThrow('availability%20window')
     await createDraft()
     await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id))).rejects.toThrow(
-      'overlapping%20workshop'
+      'already%20has%20a%20scheduled'
     )
     await expect(workshops.createWorkshop(workshopForm(fixtures.sibling.id))).rejects.toThrow(
-      'overlapping%20workshop'
+      /saved=1/
     )
-    await createDraft({ startTime: '11:00', endTime: '12:00' })
-    expect(await prisma.workshop.count()).toBe(2)
+    await createDraft({
+      workshopDefinitionId: 'fixture-definition-2',
+      startTime: '10:00',
+      endTime: '11:00',
+    })
+    expect(await prisma.workshopSession.count()).toBe(3)
   })
   it('does not join adjacent blocks to host one workshop', async () => {
+    await prisma.availabilitySlot.deleteMany()
     await prisma.classMeeting.deleteMany({ where: { classSectionId: fixtures.cls.id } })
-    await prisma.classMeeting.createMany({
-      data: [
-        { classSectionId: fixtures.cls.id, dayOfWeek: 0, startMinute: 540, endMinute: 630 },
-        { classSectionId: fixtures.cls.id, dayOfWeek: 0, startMinute: 630, endMinute: 720 },
-      ],
-    })
+    await addCandidateFixture(fixtures.cls.id, '2027-01-04', 'fixture-definition-1', 540, 630)
+    await addCandidateFixture(fixtures.cls.id, '2027-01-04', 'fixture-definition-1', 630, 720)
     await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id))).rejects.toThrow(
-      'hosting%20block'
+      'availability%20window'
     )
   })
   it('allows a replacement slot after cancellation and protects published/completed work', async () => {
     const draft = await createDraft()
     for (const status of ['PUBLISHED', 'COMPLETED', 'CANCELLED'] as const) {
-      await prisma.workshop.update({ where: { id: draft.id }, data: { status } })
+      await prisma.workshopSession.update({ where: { id: draft.id }, data: { status } })
       await expect(
         workshops.updateWorkshop(workshopForm(fixtures.cls.id, { id: draft.id, version: 0 }))
       ).rejects.toThrow('Only%20unstaffed%20draft')
     }
     await createDraft()
-    expect(await prisma.workshop.count()).toBe(2)
+    expect(await prisma.workshopSession.count()).toBe(2)
   })
   it('rejects inactive or inconsistent school/teacher records', async () => {
     await prisma.school.update({
@@ -242,7 +311,7 @@ describe('dated workshops', () => {
       data: { deletedAt: new Date() },
     })
     await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id))).rejects.toThrow(
-      'active%20class'
+      'active%20teacher'
     )
     await prisma.school.update({ where: { id: fixtures.school.id }, data: { deletedAt: null } })
     await prisma.user.update({
@@ -250,30 +319,30 @@ describe('dated workshops', () => {
       data: { deletedAt: new Date() },
     })
     await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id))).rejects.toThrow(
-      'active%20class'
+      'active%20teacher'
     )
     await prisma.user.update({
       where: { id: fixtures.teacher.id },
       data: { deletedAt: null, schoolId: fixtures.otherSchool.id },
     })
     await expect(workshops.createWorkshop(workshopForm(fixtures.cls.id))).rejects.toThrow(
-      'active%20class'
+      'active%20teacher'
     )
-    expect(await prisma.workshop.count()).toBe(0)
+    expect(await prisma.workshopSession.count()).toBe(0)
   })
   it('does not move a workshop when hosting blocks change', async () => {
     const draft = await createDraft()
     await classes.deleteMeeting(form({ id: fixtures.cls.meetings[0].id }))
     expect(
-      (await prisma.workshop.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
+      (await prisma.workshopSession.findUniqueOrThrow({ where: { id: draft.id } })).scheduledStart
     ).toEqual(draft.scheduledStart)
   })
-  it('serializes competing workshop creation so only one overlap can commit', async () => {
+  it('allows concurrent overlapping bookings for different classes with one teacher', async () => {
     await Promise.allSettled([
       workshops.createWorkshop(workshopForm(fixtures.cls.id)),
       workshops.createWorkshop(workshopForm(fixtures.sibling.id)),
     ])
-    expect(await prisma.workshop.count()).toBe(1)
+    expect(await prisma.workshopSession.count()).toBe(2)
   })
   it('enforces duration and staffing bounds at the database boundary', async () => {
     const data = {
@@ -281,9 +350,9 @@ describe('dated workshops', () => {
       scheduledStart: new Date('2027-01-04T18:00Z'),
       scheduledEnd: new Date('2027-01-04T17:00Z'),
     }
-    await expect(prisma.workshop.create({ data })).rejects.toThrow()
+    await expect(createSessionFixture({ data })).rejects.toThrow()
     await expect(
-      prisma.workshop.create({
+      createSessionFixture({
         data: { ...data, scheduledEnd: new Date('2027-01-04T19:00Z'), minPAs: 3, maxPAs: 1 },
       })
     ).rejects.toThrow()

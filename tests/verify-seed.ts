@@ -3,7 +3,7 @@ import { prisma } from '../src/lib/db'
 import { assertTestDatabase } from './fixtures'
 async function main() {
   assertTestDatabase()
-  assert.equal(await prisma.workshop.count(), 2)
+  assert.equal(await prisma.workshopSession.count(), 2)
   assert.equal(await prisma.assignment.count(), 1)
   const tables = await prisma.$queryRaw<
     { name: string | null }[]

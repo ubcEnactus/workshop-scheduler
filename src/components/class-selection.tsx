@@ -10,7 +10,7 @@ export function ClassSelection({
   const [chosen, setChosen] = useState(selected)
   return (
     <fieldset className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-      <legend className="px-2 text-sm font-semibold text-slate-900">Classes to plan</legend>
+      <legend className="px-2 text-sm font-semibold text-slate-900">Teachers to plan</legend>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <p className="text-xs font-medium text-slate-500">
           {chosen.length} of {classes.length} selected
@@ -21,7 +21,7 @@ export function ClassSelection({
             className="text-xs font-semibold text-[#1e2a4a] hover:underline"
             onClick={() => setChosen(classes.map((c) => c.id))}
           >
-            Select all classes
+            Select all teachers
           </button>
           <button
             type="button"
@@ -63,7 +63,7 @@ export function ClassSelection({
           })}
         </div>
       ) : (
-        <p className="py-3 text-sm text-slate-500">No active classes are available.</p>
+        <p className="py-3 text-sm text-slate-500">No active teachers are available.</p>
       )}
     </fieldset>
   )

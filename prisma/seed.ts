@@ -4,10 +4,7 @@ import { getPreviewDemoConfig } from '../src/lib/preview-demo-auth'
 
 const prisma = new PrismaClient()
 
-const SCHOOLS = [
-  { name: 'Lord Byng Secondary', district: 'Vancouver' },
-  { name: 'Burnaby Central Secondary', district: 'Burnaby' },
-]
+const SCHOOLS = [{ name: 'Lord Byng Secondary' }, { name: 'Burnaby Central Secondary' }]
 
 const ADMINS = [{ email: 'admin@workshopscheduler.local', name: 'Aria Admin' }]
 const PAS = [
@@ -43,9 +40,9 @@ function slugId(prefix: string, name: string): string {
 }
 
 function ticks(dayOfWeek: number, startMin: number, endMin: number) {
-  return Array.from({ length: (endMin - startMin) / 30 }, (_, index) => ({
+  return Array.from({ length: (endMin - startMin) / 15 }, (_, index) => ({
     dayOfWeek,
-    startMin: startMin + index * 30,
+    startMin: startMin + index * 15,
   }))
 }
 
@@ -56,6 +53,27 @@ async function main() {
     throw new Error(
       'Refusing to seed preview demo accounts because the preview demo environment guard is incomplete or mismatched.'
     )
+  }
+  if (process.env.SEED_RICH_DEMO === 'true') {
+    const target = new URL(process.env.DATABASE_URL ?? '')
+    const isolatedLocal =
+      target.hostname === '127.0.0.1' &&
+      target.pathname === '/workshop_test' &&
+      process.env.TEST_DATABASE_URL === process.env.DATABASE_URL
+    if (!previewDemo && !isolatedLocal)
+      throw new Error(
+        'Rich demo reset requires the guarded test preview or an isolated test database.'
+      )
+    const { seedRichDemo } = await import('./demo')
+    await seedRichDemo(
+      prisma,
+      previewDemo ?? {
+        adminEmail: ADMINS[0].email,
+        teacherEmail: TEACHERS[0].email,
+        paEmail: PAS[0].email,
+      }
+    )
+    return
   }
 
   if (previewDemo) {
@@ -82,6 +100,20 @@ async function main() {
     update: { minimumGapDays: 7 },
   })
   console.log('Seeding core demo data…')
+  const workshopDefinitions = await Promise.all(
+    [1, 2, 3, 4].map((number) =>
+      prisma.workshopDefinition.upsert({
+        where: { id: `seed-definition-${number}` },
+        create: {
+          id: `seed-definition-${number}`,
+          number,
+          title: `Workshop ${number}`,
+          durationMinutes: 60,
+        },
+        update: {},
+      })
+    )
+  )
 
   const schools = await Promise.all(
     SCHOOLS.map((school) =>
@@ -141,7 +173,7 @@ async function main() {
     await prisma.classSection.upsert({
       where: { id: classId },
       update: {
-        name: definition.name,
+        name: teacher.name ?? teacher.email,
         subject: definition.subject,
         grade: definition.grade,
         teacherId: teacher.id,
@@ -149,7 +181,7 @@ async function main() {
       },
       create: {
         id: classId,
-        name: definition.name,
+        name: teacher.name ?? teacher.email,
         subject: definition.subject,
         grade: definition.grade,
         teacherId: teacher.id,
@@ -178,25 +210,71 @@ async function main() {
     const date = new Date(`${month}-01T12:00:00Z`)
     while (date.getUTCDay() !== definition.dayOfWeek + 1) date.setUTCDate(date.getUTCDate() + 1)
     const dateKey = date.toISOString().slice(0, 10)
-    const workshopId = slugId('seed-workshop', classId)
+    const workshopSessionId = slugId('seed-workshop', classId)
     const published = previewDemo ? index === 0 : index !== 0
     const workshopData = {
-      classSectionId: classId,
+      classWorkshopId: `seed-class-workshop-${classId}-1`,
       scheduledStart: vancouverToUtc(dateKey, definition.startMinute),
       scheduledEnd: vancouverToUtc(dateKey, definition.endMinute),
       minPAs: 1,
       maxPAs: 3,
       status: published ? ('PUBLISHED' as const) : ('DRAFT' as const),
+      publishedAt: published ? new Date() : null,
     }
-    await prisma.workshop.upsert({
-      where: { id: workshopId },
+    for (const workshopDefinition of workshopDefinitions) {
+      const cw = await prisma.classWorkshop.upsert({
+        where: {
+          classSectionId_workshopDefinitionId: {
+            classSectionId: classId,
+            workshopDefinitionId: workshopDefinition.id,
+          },
+        },
+        create: {
+          id: `seed-class-workshop-${classId}-${workshopDefinition.number}`,
+          classSectionId: classId,
+          workshopDefinitionId: workshopDefinition.id,
+        },
+        update: {},
+      })
+      if (workshopDefinition.number === 1) {
+        workshopData.classWorkshopId = cw.id
+        await prisma.availabilitySlot.upsert({
+          where: { id: `seed-candidate-${cw.id}` },
+          create: {
+            id: `seed-candidate-${cw.id}`,
+            classWorkshopId: cw.id,
+            start: workshopData.scheduledStart,
+            end: workshopData.scheduledEnd,
+          },
+          update: { start: workshopData.scheduledStart, end: workshopData.scheduledEnd },
+        })
+      }
+      if (workshopDefinition.number === 2)
+        for (const offset of [7, 14]) {
+          const candidate = new Date(date)
+          candidate.setUTCDate(candidate.getUTCDate() + offset)
+          const candidateDate = candidate.toISOString().slice(0, 10)
+          const data = {
+            classWorkshopId: cw.id,
+            start: vancouverToUtc(candidateDate, definition.startMinute),
+            end: vancouverToUtc(candidateDate, definition.endMinute),
+          }
+          await prisma.availabilitySlot.upsert({
+            where: { id: `seed-candidate-${cw.id}-${offset}` },
+            create: { id: `seed-candidate-${cw.id}-${offset}`, ...data },
+            update: data,
+          })
+        }
+    }
+    await prisma.workshopSession.upsert({
+      where: { id: workshopSessionId },
       update: workshopData,
-      create: { id: workshopId, ...workshopData },
+      create: { id: workshopSessionId, ...workshopData },
     })
-    await prisma.assignment.deleteMany({ where: { workshopId } })
+    await prisma.assignment.deleteMany({ where: { workshopSessionId } })
     if (published)
       await prisma.assignment.create({
-        data: { workshopId, paId: seededPAs[0].id, status: 'PUBLISHED' },
+        data: { workshopSessionId, paId: seededPAs[0].id, status: 'PUBLISHED' },
       })
   }
 

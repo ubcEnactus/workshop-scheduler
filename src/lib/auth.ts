@@ -3,6 +3,7 @@ import Resend from 'next-auth/providers/resend'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import { redirect } from 'next/navigation'
 import type { Role } from '@prisma/client'
+import { cache } from 'react'
 
 import { prisma } from '@/lib/db'
 import { emailDeliveryMode } from '@/lib/auth-email'
@@ -130,7 +131,10 @@ export type SessionUser = {
   schoolId: string | null
 }
 
-export async function getCurrentUser(): Promise<SessionUser | null> {
+// React owns this cache and clears it between server requests. Keep both the
+// session read and live-user lookup inside it so a layout and its page share
+// one authorization result without carrying identity or role state forward.
+const getCurrentUserForRequest = cache(async (): Promise<SessionUser | null> => {
   const session = await auth()
   if (!session?.user) return null
 
@@ -140,6 +144,10 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     where: { id: session.user.id, deletedAt: null },
     select: { id: true, email: true, name: true, role: true, schoolId: true },
   })
+})
+
+export async function getCurrentUser(): Promise<SessionUser | null> {
+  return getCurrentUserForRequest()
 }
 
 /**

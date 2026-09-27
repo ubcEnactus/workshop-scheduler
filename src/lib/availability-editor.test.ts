@@ -4,8 +4,8 @@ describe('availability range editing', () => {
   it('merges overlapping/adjacent ranges and deduplicates copied days', () => {
     let slots = addAvailabilityRange(new Set(), 0, 540, 600)
     slots = addAvailabilityRange(slots, 0, 570, 630)
-    expect([...slots]).toEqual(['0-540', '0-570', '0-600'])
-    expect(copyAvailabilityDays(slots, 0, [0, 1, 1]).size).toBe(6)
+    expect([...slots]).toEqual(['0-540', '0-555', '0-570', '0-585', '0-600', '0-615'])
+    expect(copyAvailabilityDays(slots, 0, [0, 1, 1]).size).toBe(12)
     expect(copyAvailabilityDays(slots, 2, [3])).toEqual(slots)
   })
   it.each([
@@ -21,8 +21,8 @@ describe('availability range editing', () => {
   )
   it('covers the whole school day and accepts an empty schedule', () => {
     const slots = addAvailabilityRange(new Set(), 4, 510, 900)
-    expect(slots.size).toBe(13)
-    expect(slots.has('4-870')).toBe(true)
+    expect(slots.size).toBe(26)
+    expect(slots.has('4-885')).toBe(true)
     expect(copyAvailabilityDays(new Set(), 0, [1]).size).toBe(0)
   })
 })
