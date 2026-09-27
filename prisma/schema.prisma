@@ -146,7 +146,7 @@ model ClassSection {
 }
 
 // Effective Vancouver weekly availability. Only activeForScheduling rows authorize
-// new dates; inactive legacy rows remain reference information.
+// new dates; inactive legacy rows remain reference information until reviewed.
 model ClassMeeting {
   id             String       @id @default(cuid())
   classSectionId String
