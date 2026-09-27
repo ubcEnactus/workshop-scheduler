@@ -56,6 +56,8 @@ export const availabilityChangeSchema = availabilitySchema.extend({
     .optional(),
 })
 
+export const currentAvailabilitySchema = availabilityChangeSchema.omit({ effectiveFrom: true })
+
 export const adminAvailabilityTargetSchema = z.object({
   paId: z.string().min(1).max(200),
   expectedRevision: z.string().regex(/^[a-f0-9]{64}$/),

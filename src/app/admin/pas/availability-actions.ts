@@ -1,11 +1,11 @@
 'use server'
 
 import { requireRole } from '@/lib/auth'
-import { replaceAvailability, checkAvailabilityRevision } from '@/lib/availability'
+import { replaceCurrentAvailability, checkAvailabilityRevision } from '@/lib/availability'
 import { scheduleTransaction, SchedulingError } from '@/lib/scheduling/store'
 import {
   adminAvailabilityTargetSchema,
-  availabilityChangeSchema,
+  currentAvailabilitySchema,
   paAvailabilityExceptionSchema,
   removePAAvailabilityExceptionSchema,
 } from '@/lib/schemas/availability'
@@ -30,27 +30,21 @@ export async function savePAAvailability(
 ): Promise<State> {
   await requireRole('ADMIN')
   const target = adminAvailabilityTargetSchema.safeParse({ paId, expectedRevision })
-  const parsed = availabilityChangeSchema.safeParse({
+  const parsed = currentAvailabilitySchema.safeParse({
     slots: form.getAll('slots'),
-    effectiveFrom: form.get('effectiveFrom'),
   })
-  if (!target.success || !parsed.success) return { error: 'Check the date and selected times.' }
-  if (parsed.data.effectiveFrom < vancouverDateKey(new Date()))
-    return { error: 'Choose today or a future date.' }
+  if (!target.success || !parsed.success) return { error: 'Check the selected times.' }
   try {
-    await replaceAvailability(
+    await replaceCurrentAvailability(
       target.data.paId,
       parsed.data.slots,
-      parsed.data.effectiveFrom,
       target.data.expectedRevision
     )
   } catch (error) {
     return failure(error)
   }
   refresh()
-  redirect(
-    `/admin/pas/${target.data.paId}/availability?saved=1&effectiveFrom=${parsed.data.effectiveFrom}`
-  )
+  redirect(`/admin/pas/${target.data.paId}/availability?saved=1`)
 }
 export async function savePAException(
   paId: string,

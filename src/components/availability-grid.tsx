@@ -11,35 +11,15 @@ import { coalesceAvailability } from '@/lib/scheduling/availability'
 export function AvailabilityGrid({
   checked,
   action,
-  effectiveFrom,
   expectedRevision,
-  minimumEffectiveFrom,
-  exceptions,
-  exceptionAction,
-  removeExceptionAction,
   saved,
   error,
   admin = false,
 }: {
   checked: ReadonlySet<string>
   action: (state: { error?: string }, form: FormData) => Promise<{ error?: string }>
-  effectiveFrom: string
   expectedRevision?: string
-  minimumEffectiveFrom: string
-  exceptions: {
-    id: string
-    date: string
-    kind: 'AVAILABLE' | 'UNAVAILABLE'
-    startMinute: number | null
-    endMinute: number | null
-    notes: string | null
-  }[]
   admin?: boolean
-  exceptionAction?: (
-    state: { error?: string; saved?: boolean },
-    form: FormData
-  ) => Promise<{ error?: string; saved?: boolean }>
-  removeExceptionAction?: (state: { error?: string }, form: FormData) => Promise<{ error?: string }>
   saved?: boolean
   error?: boolean
 }) {
@@ -84,20 +64,6 @@ export function AvailabilityGrid({
             {(slots.size * SLOT_MINUTES) / 60} hours per week ·{' '}
             {new Set([...slots].map((s) => s.split('-')[0])).size} weekdays · Vancouver time
           </p>
-          <label className="field max-w-sm">
-            This weekly schedule takes effect
-            <input
-              className="input"
-              type="date"
-              name="effectiveFrom"
-              min={minimumEffectiveFrom}
-              defaultValue={effectiveFrom}
-              required
-            />
-            <span className="text-xs font-normal text-slate-600">
-              Choose a future date to save a change without rewriting earlier availability.
-            </span>
-          </label>
           {saved && !dirty && (
             <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
               Availability saved.
@@ -328,141 +294,6 @@ export function AvailabilityGrid({
           </div>
         </ReadyFields>
       </form>
-      {admin && exceptionAction && removeExceptionAction && (
-        <AvailabilityExceptions
-          effectiveFrom={minimumEffectiveFrom}
-          exceptions={exceptions}
-          action={exceptionAction}
-          removeAction={removeExceptionAction}
-        />
-      )}
     </div>
-  )
-}
-
-function AvailabilityExceptions({
-  effectiveFrom,
-  exceptions,
-  action,
-  removeAction,
-}: {
-  effectiveFrom: string
-  exceptions: {
-    id: string
-    date: string
-    kind: 'AVAILABLE' | 'UNAVAILABLE'
-    startMinute: number | null
-    endMinute: number | null
-    notes: string | null
-  }[]
-  action: (
-    state: { error?: string; saved?: boolean },
-    form: FormData
-  ) => Promise<{ error?: string; saved?: boolean }>
-  removeAction: (state: { error?: string }, form: FormData) => Promise<{ error?: string }>
-}) {
-  const [state, formAction, pending] = useActionState(action, {})
-  return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-      <div>
-        <h2 className="font-semibold">One-off availability exceptions</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Add time for one date or mark a date or time unavailable. An exception never changes an
-          existing assignment; admins review any conflict.
-        </p>
-      </div>
-      {exceptions.length ? (
-        <ul className="space-y-2">
-          {exceptions.map((item) => (
-            <li
-              key={item.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm"
-            >
-              <span>
-                <strong>{item.date}</strong> ·{' '}
-                {item.kind === 'AVAILABLE' ? 'Available' : 'Unavailable'} ·{' '}
-                {item.startMinute == null || item.endMinute == null
-                  ? 'All day'
-                  : formatSlotRange(item.startMinute, item.endMinute - item.startMinute)}
-                {item.notes ? ` · ${item.notes}` : ''}
-              </span>
-              <RemoveException id={item.id} action={removeAction} />
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-slate-500">No future exceptions saved.</p>
-      )}
-      <form action={formAction} className="space-y-3 border-t border-slate-100 pt-4">
-        <ReadyFields disabled={pending}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="field">
-              Date
-              <input
-                className="input"
-                type="date"
-                name="date"
-                min={effectiveFrom}
-                defaultValue={effectiveFrom}
-                required
-              />
-            </label>
-            <label className="field">
-              Exception
-              <select className="input" name="kind" defaultValue="UNAVAILABLE">
-                <option value="UNAVAILABLE">Unavailable</option>
-                <option value="AVAILABLE">Additional availability</option>
-              </select>
-            </label>
-            <label className="field">
-              From (blank for all day unavailable)
-              <input className="input" type="time" name="startTime" step={900} />
-            </label>
-            <label className="field">
-              Until
-              <input className="input" type="time" name="endTime" step={900} />
-            </label>
-          </div>
-          <label className="field">
-            Note (optional)
-            <input className="input" name="notes" maxLength={500} />
-          </label>
-          {state.error && (
-            <p role="alert" className="text-sm text-red-800">
-              {state.error}
-            </p>
-          )}
-          {state.saved && (
-            <p role="status" className="text-sm text-emerald-800">
-              Exception saved.
-            </p>
-          )}
-          <SubmitButton size="sm">Add exception</SubmitButton>
-        </ReadyFields>
-      </form>
-    </section>
-  )
-}
-
-function RemoveException({
-  id,
-  action,
-}: {
-  id: string
-  action: (state: { error?: string }, form: FormData) => Promise<{ error?: string }>
-}) {
-  const [state, formAction, pending] = useActionState(action, {})
-  return (
-    <form action={formAction}>
-      <input type="hidden" name="id" value={id} />
-      <Button type="submit" size="sm" variant="ghost" disabled={pending}>
-        Remove
-      </Button>
-      {state.error && (
-        <p role="alert" className="mt-1 text-xs text-red-800">
-          {state.error}
-        </p>
-      )}
-    </form>
   )
 }

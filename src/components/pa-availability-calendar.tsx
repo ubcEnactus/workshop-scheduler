@@ -5,11 +5,18 @@ import { useState } from 'react'
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { buttonClasses } from '@/components/ui/button'
 import { formatSlotRange, shiftMonth } from '@/lib/time'
+import {
+  PACalendarDateEditor,
+  type PADatedTime,
+  type PADateAction,
+} from './pa-calendar-date-editor'
 
 type CalendarDay = {
   date: string
   windows: { startMinute: number; endMinute: number }[]
   sessions: { id: string; title: string; time: string; school: string; completed: boolean }[]
+  changes: PADatedTime[]
+  weeklyWindows?: { startMinute: number; endMinute: number }[]
 }
 function dateLabel(date: string) {
   return new Intl.DateTimeFormat('en-CA', {
@@ -26,13 +33,15 @@ export function PAAvailabilityCalendar({
   today,
   days,
   basePath,
-  effectiveFrom,
+  exceptionAction,
+  removeExceptionAction,
 }: {
   month: string
   today: string
   days: CalendarDay[]
   basePath: string
-  effectiveFrom?: string
+  exceptionAction?: PADateAction
+  removeExceptionAction?: PADateAction
 }) {
   const [selected, setSelected] = useState(today.startsWith(month) ? today : `${month}-01`)
   const day = days.find((item) => item.date === selected) ?? days[0]
@@ -40,7 +49,6 @@ export function PAAvailabilityCalendar({
   const offset = (first.getUTCDay() + 6) % 7
   function monthHref(direction: -1 | 1) {
     const query = new URLSearchParams({ month: shiftMonth(month, direction) })
-    if (effectiveFrom) query.set('effectiveFrom', effectiveFrom)
     return basePath + '?' + query
   }
   return (
@@ -128,7 +136,7 @@ export function PAAvailabilityCalendar({
           {!day.windows.length && !day.sessions.length && (
             <p className="text-sm text-slate-600">No availability or workshops.</p>
           )}
-          {day.windows.map((window) => (
+          {(day.weeklyWindows ?? day.windows).map((window) => (
             <div
               key={window.startMinute}
               className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950"
@@ -139,6 +147,16 @@ export function PAAvailabilityCalendar({
               </p>
             </div>
           ))}
+          {exceptionAction && removeExceptionAction && (
+            <PACalendarDateEditor
+              key={day.date}
+              date={day.date}
+              today={today}
+              changes={day.changes}
+              action={exceptionAction}
+              removeAction={removeExceptionAction}
+            />
+          )}
           {day.sessions.map((session) => (
             <div
               key={session.id}

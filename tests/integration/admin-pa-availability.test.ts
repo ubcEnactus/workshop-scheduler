@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, expect, it, vi } from 'vitest'
 import { prisma } from '../../src/lib/db'
 import { resetFixtures, form, createSessionFixture } from '../fixtures'
-import { availabilityRevision } from '../../src/lib/availability'
+import { availabilityRevision, replaceAvailability } from '../../src/lib/availability'
 import { vancouverDateKey, vancouverToUtc } from '../../src/lib/time'
 import { loadSchedule } from '../../src/lib/scheduling/store'
 const { sessionAuth } = vi.hoisted(() => ({ sessionAuth: vi.fn() }))
@@ -47,7 +47,6 @@ it('allows only admins to edit an active PA and validates dates and slots', asyn
       )
     ).toHaveProperty('error')
   for (const data of [
-    { effectiveFrom: '2000-01-01', slots: '0-600' },
     { effectiveFrom: today, slots: '5-600' },
     { effectiveFrom: today, slots: '0-607' },
   ])
@@ -86,10 +85,8 @@ it('shares effective schedules with the PA and rejects stale saves from either a
 })
 
 it('preserves earlier versions and published assignments when an admin clears availability', async () => {
-  const initial = form({ effectiveFrom: today, slots: '0-600' })
-  await expect(savePAAvailability(f.pa.id, await revision(), {}, initial)).rejects.toThrow(
-    'saved=1'
-  )
+  await replaceAvailability(f.pa.id, [{ dayOfWeek: 0, startMin: 600 }], '2026-01-01')
+  await replaceAvailability(f.pa.id, [{ dayOfWeek: 1, startMin: 600 }], '2099-01-01')
   const session = await createSessionFixture({
     data: {
       classSectionId: f.cls.id,
@@ -109,10 +106,61 @@ it('preserves earlier versions and published assignments when an admin clears av
   ).rejects.toThrow('saved=1')
   expect(await prisma.availability.count({ where: { userId: f.pa.id } })).toBe(1)
   expect(await prisma.availabilityScheduleVersion.count({ where: { userId: f.pa.id } })).toBe(2)
+  const versions = await prisma.availabilityScheduleVersion.findMany({
+    where: { userId: f.pa.id },
+    orderBy: { effectiveFrom: 'asc' },
+  })
+  expect(versions[1]).toMatchObject({ effectiveFrom: new Date(today), effectiveUntil: null })
+  expect(versions[0].effectiveUntil).toEqual(new Date(new Date(today).getTime() - 86400000))
   expect(await prisma.assignment.findUnique({ where: { id: assignment.id } })).toEqual(assignment)
   expect(await prisma.workshopSession.findUnique({ where: { id: session.id } })).toEqual(session)
   const snapshot = await loadSchedule(prisma)
   expect(snapshot.workshops.find((item) => item.id === session.id)?.status).toBe('PUBLISHED')
+})
+
+it('PA saves a single current schedule regardless of posted dates and preserves dated additions', async () => {
+  await replaceAvailability(f.pa.id, [{ dayOfWeek: 0, startMin: 600 }], '2026-01-01')
+  await replaceAvailability(f.pa.id, [{ dayOfWeek: 1, startMin: 600 }], '2099-01-01')
+  const addition = await prisma.pAAvailabilityException.create({
+    data: {
+      userId: f.pa.id,
+      date: new Date('2027-01-06'),
+      kind: 'AVAILABLE',
+      startMinute: 600,
+      endMinute: 660,
+    },
+  })
+  sessionAuth.mockResolvedValue({ user: { id: f.pa.id } })
+  await expect(
+    saveAvailabilityForm(
+      {},
+      form({
+        effectiveFrom: '2099-01-01',
+        expectedRevision: await revision(),
+        slots: '2-600',
+      })
+    )
+  ).rejects.toThrow('saved=1')
+  const rows = await prisma.availability.findMany({
+    where: { userId: f.pa.id },
+    orderBy: { effectiveFrom: 'asc' },
+  })
+  expect(rows).toHaveLength(2)
+  expect(rows[1]).toMatchObject({
+    dayOfWeek: 2,
+    startMin: 600,
+    effectiveFrom: new Date(today),
+    effectiveUntil: null,
+  })
+  expect(rows[0].effectiveUntil).toEqual(new Date(new Date(today).getTime() - 86400000))
+  expect(
+    await prisma.availabilityScheduleVersion.count({
+      where: { userId: f.pa.id, effectiveFrom: { gt: new Date(today) } },
+    })
+  ).toBe(0)
+  expect(await prisma.pAAvailabilityException.findUnique({ where: { id: addition.id } })).toEqual(
+    addition
+  )
 })
 
 it('scopes dated edits to the selected PA and guards stale exception changes', async () => {

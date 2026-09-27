@@ -1,6 +1,15 @@
 import { scheduleTransaction, SchedulingError } from '@/lib/scheduling/store'
 import type { Prisma } from '@prisma/client'
 import { createHash } from 'node:crypto'
+import { vancouverDateKey } from '@/lib/time'
+
+export async function replaceCurrentAvailability(
+  userId: string,
+  slots: { dayOfWeek: number; startMin: number }[],
+  expectedRevision?: string
+) {
+  return replaceAvailability(userId, slots, vancouverDateKey(new Date()), expectedRevision, true)
+}
 
 export async function availabilityRevision(tx: Prisma.TransactionClient, userId: string) {
   const [slots, versions, exceptions] = await Promise.all([
@@ -43,11 +52,19 @@ export async function replaceAvailability(
   userId: string,
   slots: { dayOfWeek: number; startMin: number }[],
   effectiveFrom: string,
-  expectedRevision?: string
+  expectedRevision?: string,
+  replaceFuture = false
 ): Promise<void> {
   await scheduleTransaction(async (tx) => {
     await checkAvailabilityRevision(tx, userId, expectedRevision)
     const start = new Date(`${effectiveFrom}T00:00:00.000Z`)
+    // A current-schedule save supersedes future plans without rewriting history.
+    if (replaceFuture) {
+      await tx.availability.deleteMany({ where: { userId, effectiveFrom: { gt: start } } })
+      await tx.availabilityScheduleVersion.deleteMany({
+        where: { userId, effectiveFrom: { gt: start } },
+      })
+    }
     const priorDay = new Date(start)
     priorDay.setUTCDate(priorDay.getUTCDate() - 1)
     const next = await tx.availabilityScheduleVersion.findFirst({

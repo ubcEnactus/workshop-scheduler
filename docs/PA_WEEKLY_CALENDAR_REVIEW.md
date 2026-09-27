@@ -1,4 +1,16 @@
-# Weekly PA availability and read-only calendar
+# Weekly PA availability and calendar
+
+## Single current schedule and admin calendar additions
+
+September 27 follow-up: PAs and admins maintain one current weekly schedule. The effective-date input and version navigation are removed. Each save uses today in Vancouver, replaces today and future weekly rows, and removes superseded future versions. Earlier records remain available for historical calendar coverage. Dated admin changes and published assignments are preserved, including when the weekly schedule is cleared. Existing future versions remain untouched until that PA's next weekly save; this release does not rewrite scheduling data on deployment.
+
+Admin one-off additions now live in the selected calendar day, with start/end time and optional notes. Added time appears on that day with a Remove control. Existing restrictions remain visible to admins and removable for current/future dates. The standalone exceptions section is removed. PAs retain their read-only calendar and receive neither dated editing controls nor private admin notes.
+
+Implementation plan completed: simplify the shared weekly editor, use a server-selected current date with the existing transaction and revision guards, put admin dated actions in the calendar sidebar, and verify history, permissions, stale edits, and responsive layouts. No schema migration is required.
+
+Validation: 242 unit and 256 PostgreSQL integration tests pass, including future-plan replacement, forged-date handling, empty current schedules, historical preservation, and unchanged published assignments. All 14 selected browser journeys pass, covering the new calendar interactions, PA/admin stale saves, staffing, publication, and teacher scheduling. Desktop/mobile accessibility and overflow checks pass; screenshots were visually inspected. Lint, TypeScript, formatting, diff checks, and the production build pass.
+
+## Earlier weekly-calendar release
 
 Deployed to Ennovate and Enspire on September 27, 2026, from commit `d6f31f90c59b97761b93520e8b2e457507bb2ab5` on `feature/dated-workshops`.
 
