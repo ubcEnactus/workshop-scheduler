@@ -10,6 +10,17 @@ Implementation plan completed: simplify the shared weekly editor, use a server-s
 
 Validation: 242 unit and 256 PostgreSQL integration tests pass, including future-plan replacement, forged-date handling, empty current schedules, historical preservation, and unchanged published assignments. All 14 selected browser journeys pass, covering the new calendar interactions, PA/admin stale saves, staffing, publication, and teacher scheduling. Desktop/mobile accessibility and overflow checks pass; screenshots were visually inspected. Lint, TypeScript, formatting, diff checks, and the production build pass.
 
+### Current follow-up deployment
+
+Deployed from pushed commit `209c31470da0a829256acd5d3fb36369fc00f1fe` on `feature/dated-workshops`, using a frozen 344-file export.
+
+- [Ennovate](https://ennovate-workshop-demo.vercel.app/login): `dpl_7X2r9UDiK5kmA45F9ySbB7uxr4Nj`.
+- [Enspire](https://enspire-workshop-demo.vercel.app/login): `dpl_Gatg18CTF6s2pQvP9eMiLxJYtkv2`.
+
+Both builds reached READY before their existing public aliases were updated. All 47 hosted desktop/mobile page states passed, including the new admin selected-date form, absence of effective-date controls, PA calendar navigation, sign-in/out, role guards, and cross-demo session isolation. No accessibility violations, overflow, browser errors, or application 5xx responses were observed. The deployed mobile admin panel was visually inspected.
+
+Both databases retain all 23 migrations; fingerprints matched across all 26 application tables before and after deployment. No scheduling records were edited by hosted verification. Evidence is retained under ignored `work/current-pa-release-20260927/`.
+
 ## Earlier weekly-calendar release
 
 Deployed to Ennovate and Enspire on September 27, 2026, from commit `d6f31f90c59b97761b93520e8b2e457507bb2ab5` on `feature/dated-workshops`.
