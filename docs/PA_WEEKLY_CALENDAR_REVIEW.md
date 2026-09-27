@@ -1,6 +1,6 @@
 # Weekly PA availability and read-only calendar
 
-Implemented locally; not deployed as part of this change.
+Deployed to Ennovate and Enspire on September 27, 2026, from commit `d6f31f90c59b97761b93520e8b2e457507bb2ab5` on `feature/dated-workshops`.
 
 PAs enter a time range and select Monday–Friday checkboxes beneath it. One action adds the range to every selected weekday; overlapping times merge, and the weekly list shows every day together. Remove, clear, and undo operate on the unsaved weekly schedule, with an explicit save and the existing concurrent-edit protection.
 
@@ -9,3 +9,16 @@ The calendar below uses the teacher calendar's month grid, green availability, b
 PA time-off and date-specific availability forms and Server Actions are removed. The individual-slot grid is admin-only. Admins retain their existing detailed editing controls and share the weekly block input and read-only calendar. Earlier records, effective versions, and assignments are preserved. Time off is communicated manually.
 
 No schema migration is required. Unit and integration suites passed (242 and 255 tests). All 20 selected browser journeys passed, including the weekly-only PA flow, published-assignment privacy, effective-date calendar navigation, admin editing, stale saves, staffing, and publication. The calendar test passed again after the final mobile layout adjustment. Desktop/mobile accessibility checks found no WCAG A/AA violations or horizontal overflow; screenshots were visually reviewed. Formatting, lint, TypeScript, production build, and `git diff --check` passed. Evidence is retained in ignored `work/pa-calendar-*.log` and `work/pa-weekly-calendar-*.png`.
+
+## Deployment verification
+
+The release was exported directly from the pushed Git commit into a frozen 343-file snapshot. Both remote builds reached READY before the existing public aliases were updated; project access and email settings were preserved.
+
+- [Ennovate](https://ennovate-workshop-demo.vercel.app/login): `dpl_E9nHe7oNsmrQ36426HawLrLR9iC1`.
+- [Enspire](https://enspire-workshop-demo.vercel.app/login): `dpl_6pd466qiu8tj1fjfdiZjCQGnMWxR`.
+
+Both databases already had all 23 required migrations. Database-side fingerprints matched across all 26 application tables before and after deployment; no schema or scheduling-data changes were needed.
+
+Hosted verification passed 47 desktop/mobile page states. It checked the five weekday checkboxes, read-only PA calendar navigation, absence of PA time-off and individual-slot controls, retained admin controls, teacher tabs, booking, sign-in/out, role restrictions, and cross-demo session isolation. No accessibility violations, horizontal overflow, browser errors, or application 5xx responses were detected. The final run waits for the PA editor's controls to become enabled before testing calendar navigation, after the first run timed out on an early Enspire navigation click. No scheduling records were edited during verification. The deployed PA mobile layout was visually inspected.
+
+The commit manifest, deployment and alias records, database comparisons, screenshots, and hosted results are retained in ignored `work/pa-calendar-release-20260927/`.
