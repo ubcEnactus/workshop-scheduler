@@ -161,8 +161,21 @@ model ClassMeeting {
   notes               String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @default(now()) @updatedAt
+  skips               ClassMeetingSkip[]
 
   @@index([classSectionId])
+}
+
+// One removed occurrence of a weekly teacher time; other sources remain available.
+model ClassMeetingSkip {
+  id              String       @id @default(cuid())
+  classMeetingId  String
+  classMeeting    ClassMeeting @relation(fields: [classMeetingId], references: [id], onDelete: Cascade)
+  date            DateTime     @db.Date
+  sourceUpdatedAt DateTime
+  createdAt       DateTime     @default(now())
+
+  @@unique([classMeetingId, date])
 }
 
 enum WorkshopStatus {
