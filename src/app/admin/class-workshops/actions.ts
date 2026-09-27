@@ -446,12 +446,16 @@ export async function addClassWorkshop(form: FormData) {
     redirect('/admin/classes?error=' + encodeURIComponent(parsed.error.issues[0].message))
   const target = '/admin/classes/' + parsed.data.classSectionId
   const returnTarget = parsed.data.returnToClass
-    ? schedulingHref(target, {
-        month: parsed.data.returnMonth ?? vancouverMonthKey(),
-        classSectionId: parsed.data.classSectionId,
-        workshopDefinitionId: parsed.data.returnWorkshopDefinitionId,
-        week: parsed.data.returnWeek,
-      }, { tab: 'workshops' })
+    ? schedulingHref(
+        target,
+        {
+          month: parsed.data.returnMonth ?? vancouverMonthKey(),
+          classSectionId: parsed.data.classSectionId,
+          workshopDefinitionId: parsed.data.returnWorkshopDefinitionId,
+          week: parsed.data.returnWeek,
+        },
+        { tab: 'workshops' }
+      )
     : target
   let id: string
   try {

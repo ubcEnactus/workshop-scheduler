@@ -205,10 +205,20 @@ function RecurringForm({
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Days</legend>
           <div className="flex flex-wrap gap-2">
-            {DAY_LABELS.map((label,index)=><label key={label} className="cursor-pointer">
-              <input className="peer sr-only" type={block ? 'radio':'checkbox'} name="days" value={index} defaultChecked={index === (block?.dayOfWeek ?? 0)} />
-              <span className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 px-3 text-sm peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:font-semibold peer-checked:text-blue-950 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600">{label}</span>
-            </label>)}
+            {DAY_LABELS.map((label, index) => (
+              <label key={label} className="cursor-pointer">
+                <input
+                  className="peer sr-only"
+                  type={block ? 'radio' : 'checkbox'}
+                  name="days"
+                  value={index}
+                  defaultChecked={index === (block?.dayOfWeek ?? 0)}
+                />
+                <span className="inline-flex min-h-10 items-center rounded-lg border border-slate-200 px-3 text-sm peer-checked:border-blue-600 peer-checked:bg-blue-50 peer-checked:font-semibold peer-checked:text-blue-950 peer-focus-visible:ring-2 peer-focus-visible:ring-blue-600">
+                  {label}
+                </span>
+              </label>
+            ))}
           </div>
         </fieldset>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -468,6 +478,9 @@ export function ClassCalendar({
             <summary className="cursor-pointer text-sm font-semibold">
               {DAY_LABELS[block.dayOfWeek]} ·{' '}
               {formatSlotRange(block.startMinute, block.endMinute - block.startMinute)}
+              {!block.activeForScheduling && (
+                <span className="ml-2 text-xs text-amber-900">Needs review</span>
+              )}
             </summary>
             {editable && (
               <div className="mt-3 space-y-2">

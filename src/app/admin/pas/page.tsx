@@ -93,7 +93,13 @@ export default async function PAsPage({
                         </td>
                         <td>
                           <div className="flex flex-wrap justify-end gap-2">
-                            <Link href={`/admin/pas/${pa.id}/availability`} aria-label={`Availability for ${pa.name ?? pa.email}`} className={buttonClasses({variant:"secondary",size:"sm"})}>Availability</Link>
+                            <Link
+                              href={`/admin/pas/${pa.id}/availability`}
+                              aria-label={`Availability for ${pa.name ?? pa.email}`}
+                              className={buttonClasses({ variant: 'secondary', size: 'sm' })}
+                            >
+                              Availability
+                            </Link>
                             <Link
                               href={`/admin/pas/${pa.id}/edit`}
                               aria-label={`Edit ${pa.name ?? pa.email}`}

@@ -47,15 +47,7 @@ test('reviews replacement, reschedule, cancellation and completion while role hi
     paPage = await paContext.newPage()
   await login(paPage, f.pa.email, 'pa')
   await paPage.getByRole('link', { name: 'Edit availability' }).click()
-  await paPage.getByText('Edit individual 15-minute slots', { exact: true }).click()
-  for (const label of [
-    'Monday 10:00–10:15 AM',
-    'Monday 10:15–10:30 AM',
-    'Monday 10:30–10:45 AM',
-    'Monday 10:45–11:00 AM',
-  ]) {
-    await paPage.getByRole('checkbox', { name: label, exact: true }).uncheck()
-  }
+  await paPage.getByRole('button', { name: 'Remove Monday 10:00–11:00 AM', exact: true }).click()
   await paPage.getByRole('button', { name: 'Save availability' }).click()
   await expect(paPage.getByText('Availability saved.', { exact: true })).toBeVisible()
   await paPage.goto('/pa')

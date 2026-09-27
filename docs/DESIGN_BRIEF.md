@@ -32,7 +32,7 @@ If plans change, the admin can edit the date and PA set together, change details
 
 The admin is in full control. Admins manage schools, people, classes, workshop slots, assignments, publishing, replacements, cancellations, and completion.
 
-PAs have one input: their recurring weekly availability. They can view published assignments but cannot accept, decline, or change them.
+PAs provide recurring weekly availability using time blocks and a Monday–Friday checkbox selection. A read-only calendar shows their saved availability and published assignments. PAs communicate time off manually; they do not enter dated exceptions or edit individual slots. Admins can view and edit an individual PA's availability from the PA directory or staffing view, retaining detailed controls. Both editors share the same effective schedules, with stale-save protection. Availability edits do not accept, decline, or change assignments. See [PA weekly calendar verification](PA_WEEKLY_CALENDAR_REVIEW.md).
 
 Teachers are view-only. They can see published workshops for their school but cannot request, schedule, or reschedule anything in the app.
 

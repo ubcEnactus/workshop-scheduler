@@ -50,7 +50,10 @@ export const availabilitySchema = z.object({
 
 export const availabilityChangeSchema = availabilitySchema.extend({
   effectiveFrom: z.string().refine(isCalendarDate, 'Choose a valid effective date.'),
-  expectedRevision: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  expectedRevision: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/)
+    .optional(),
 })
 
 export const adminAvailabilityTargetSchema = z.object({

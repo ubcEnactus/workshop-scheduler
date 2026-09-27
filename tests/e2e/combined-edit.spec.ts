@@ -39,9 +39,7 @@ test('admin reviews a combined published edit; participants see instructions but
   await edit.getByLabel('Fixture PA', { exact: true }).uncheck()
   await edit.getByLabel('Tuesday PA', { exact: true }).check()
   await expect(edit.getByLabel('Delivery mode', { exact: true })).toHaveCount(0)
-  await edit
-    .getByLabel('Room, address or meeting link', { exact: true })
-    .fill('https://example.test/meeting')
+  await edit.getByLabel('Location', { exact: true }).fill('https://example.test/meeting')
   await edit.getByLabel('Participant instructions').fill('Bring a laptop and arrive early.')
   await edit.getByLabel('Internal admin notes').fill('PRIVATE: admin-only coordination details.')
   await edit

@@ -11,10 +11,19 @@ export async function availabilityRevision(tx: Prisma.TransactionClient, userId:
   return createHash('sha256').update(JSON.stringify({ slots, versions, exceptions })).digest('hex')
 }
 
-export async function checkAvailabilityRevision(tx: Prisma.TransactionClient, userId: string, expectedRevision?: string) {
-  if (!await tx.user.findFirst({ where: { id: userId, role: 'PA', deletedAt: null }, select: { id: true } }))
+export async function checkAvailabilityRevision(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  expectedRevision?: string
+) {
+  if (
+    !(await tx.user.findFirst({
+      where: { id: userId, role: 'PA', deletedAt: null },
+      select: { id: true },
+    }))
+  )
     throw new SchedulingError('This PA is no longer available.')
-  if (expectedRevision && await availabilityRevision(tx, userId) !== expectedRevision)
+  if (expectedRevision && (await availabilityRevision(tx, userId)) !== expectedRevision)
     throw new SchedulingError('This schedule changed. Reload before saving your changes.')
 }
 

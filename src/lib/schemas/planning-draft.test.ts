@@ -41,6 +41,11 @@ describe('retained workshop date choices', () => {
       selected: { first: choice },
     })
   })
+  it('normalizes older browser drafts to in-person without losing choices', () => {
+    expect(
+      restorePlanningDraft(JSON.stringify({ ...draft, mode: 'ONLINE' }), ['first'])?.mode
+    ).toBe('IN_PERSON')
+  })
   it('rejects corrupt browser state and invalid dates or increments', () => {
     expect(restorePlanningDraft('broken', ['first'])).toBeUndefined()
     for (const patch of [{ date: '2027-02-30' }, { startTime: '09:07' }]) {

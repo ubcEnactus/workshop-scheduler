@@ -41,9 +41,7 @@ export function ChangeSummary({ before, after }: { before: unknown; after: unkno
               </p>
             )}
             {state.location && (
-              <p className="mt-2 text-sm break-words text-slate-600">
-                {state.location}
-              </p>
+              <p className="mt-2 text-sm break-words text-slate-600">{state.location}</p>
             )}
             {state.participantInstructions && (
               <p className="mt-2 text-sm whitespace-pre-wrap text-slate-600">

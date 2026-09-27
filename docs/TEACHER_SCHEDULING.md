@@ -2,6 +2,10 @@
 
 Each teacher represents one class. Admins add a school and teacher, then open the teacher to record weekly availability, effective dates, exceptions, subject/grade, session defaults, and workshop enrollment. There is no separate class creation, label, picker, or teacher handover. A teacher receives at most one non-cancelled session per run; another visit requires another run.
 
+The teacher page has two independent tabs: **Availability** (weekly times and calendar) and **Workshops** (enrollment and sessions). Contact editing, scheduling settings, and deactivation are compact header actions. Adding a weekly time uses one Monday–Friday selection; saving creates a time for every selected day and enables date suggestions automatically. Editing an existing time selects one weekday and retains its removed calendar dates. Imported inactive reference rows remain marked **Needs review** until an admin reviews and saves them. The default-only migration does not activate those records.
+
+Workshop forms use in-person delivery implicitly and show **Location** without a delivery-mode selector. Historical delivery values remain readable. Admins can open **PAs → Availability** to view or edit the same effective weekly schedules and dated exceptions that the PA sees. These edits preserve earlier schedule versions and existing assignments; stale weekly saves from either actor are rejected. See [simplified scheduling verification](SIMPLIFIED_SCHEDULES_REVIEW.md).
+
 ## Calendar occurrence removal
 
 Admins manage one-day changes directly on the teacher calendar. **Remove for this date** removes only that weekly block on the selected Vancouver date. Other weeks and independent dated availability remain. **Undo** follows a successful removal; **Restore** remains available after reopening the calendar. Removing the whole weekly pattern stays in weekly settings as **Remove weekly time**.

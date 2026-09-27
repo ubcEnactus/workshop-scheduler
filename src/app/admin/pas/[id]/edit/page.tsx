@@ -36,7 +36,9 @@ export default async function EditPAPage({
           </Link>
         }
       />
-      <Link href={`/admin/pas/${pa.id}/availability`} className="text-sm underline">View availability</Link>
+      <Link href={`/admin/pas/${pa.id}/availability`} className="text-sm underline">
+        View availability
+      </Link>
       <FormError message={error} />
       <Panel
         title="PA details"

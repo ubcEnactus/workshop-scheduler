@@ -34,7 +34,10 @@ export const recurringClassAvailabilitySchema = z
     classSectionId: id,
     id: z.string().max(200).default(''),
     expectedUpdatedAt: z.string().default(''),
-    days: z.array(z.coerce.number().int().min(0).max(4)).min(1, 'Select at least one weekday.').max(5),
+    days: z
+      .array(z.coerce.number().int().min(0).max(4))
+      .min(1, 'Select at least one weekday.')
+      .max(5),
     startTime: clock,
     endTime: clock,
     effectiveFrom: date,
@@ -42,7 +45,12 @@ export const recurringClassAvailabilitySchema = z
     notes: z.string().trim().max(500).default(''),
   })
   .superRefine((data, ctx) => {
-    if (data.id && data.days.length !== 1) ctx.addIssue({ code: 'custom', message: 'Select one weekday for this weekly time.', path: ['days'] })
+    if (data.id && data.days.length !== 1)
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Select one weekday for this weekly time.',
+        path: ['days'],
+      })
     if (data.id && !z.iso.datetime().safeParse(data.expectedUpdatedAt).success)
       ctx.addIssue({
         code: 'custom',

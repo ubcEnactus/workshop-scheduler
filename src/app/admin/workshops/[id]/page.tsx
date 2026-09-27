@@ -132,9 +132,7 @@ export default async function WorkshopDetail({
       >
         Included teacher and availability
       </Link>
-      <p className="text-sm break-words text-slate-600">
-        {workshop.location}
-      </p>
+      <p className="text-sm break-words text-slate-600">{workshop.location}</p>
       {workshop.notes && (
         <p className="text-sm whitespace-pre-wrap text-slate-600">
           Internal admin notes: {workshop.notes}

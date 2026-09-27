@@ -153,7 +153,7 @@ export default async function StaffingSettings({
                     <td>
                       <Link
                         className="font-semibold text-slate-900 underline"
-                        href={`/admin/pas/${row.id}/edit`}
+                        href={`/admin/pas/${row.id}/availability`}
                       >
                         {row.name}
                       </Link>

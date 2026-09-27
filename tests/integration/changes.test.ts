@@ -558,7 +558,7 @@ describe('reviewed workshop changes', () => {
     expect(saved.assignments.map((a) => a.paId)).toEqual([replacement.id])
     expect(saved.notes).toBe('Private admin context')
     expect(saved.participantInstructions).toBe('Check in at the office.')
-    expect(saved.mode).toBe('ONLINE')
+    expect(saved.mode).toBe('IN_PERSON')
     expect(await prisma.workshopEvent.count()).toBe(1)
   })
   it('retains a published event when its last PA is removed and records affected participants', async () => {

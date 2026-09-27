@@ -164,7 +164,7 @@ export function WorkshopChanges({
           <div className="form-grid">
             <input type="hidden" name="mode" value="IN_PERSON" />
             <label className="field">
-              Room, address or meeting link
+              Location
               <input
                 name="location"
                 className="input"

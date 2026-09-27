@@ -25,7 +25,7 @@ test('records per-workshop candidates, schedules a session, assigns and publishe
     })),
   })
   await login(page, f.admin.email, 'admin')
-  await page.goto('/admin/classes/' + f.cls.id)
+  await page.goto('/admin/classes/' + f.cls.id + '?tab=workshops')
   const addWorkshopForm = page
     .locator('form')
     .filter({ has: page.getByRole('button', { name: 'Add workshop to teacher' }) })
@@ -68,7 +68,7 @@ test('records per-workshop candidates, schedules a session, assigns and publishe
   ).toBeVisible()
   await page.locator('article').last().getByRole('button', { name: 'Remove availability' }).click()
   await expect(page.locator('article')).toHaveCount(1)
-  await page.goto('/admin/classes/' + f.cls.id)
+  await page.goto('/admin/classes/' + f.cls.id + '?tab=workshops')
   const addSecondWorkshopForm = page
     .locator('form')
     .filter({ has: page.getByRole('button', { name: 'Add workshop to teacher' }) })
@@ -106,7 +106,7 @@ test('records per-workshop candidates, schedules a session, assigns and publishe
     paId: f.pa.id,
     status: 'PUBLISHED',
   })
-  await page.goto('/admin/classes/' + f.cls.id)
+  await page.goto('/admin/classes/' + f.cls.id + '?tab=workshops')
   await expect(page.getByText('Published', { exact: true })).toBeVisible()
   await expect(page.getByText('Needs availability', { exact: true })).toBeVisible()
   const teacher = await browser.newPage()

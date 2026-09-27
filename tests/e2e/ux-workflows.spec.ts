@@ -298,7 +298,7 @@ test('auto-fill needs no quota and ranks the lower lifetime workload first', asy
     })
   ).toBe(0)
 })
-test('mobile PA ranges copy across the week, support undo and persist without the grid', async ({
+test('mobile PA ranges apply to selected weekdays, support undo and persist without the grid', async ({
   page,
 }) => {
   const f = await resetFixtures()
@@ -308,11 +308,10 @@ test('mobile PA ranges copy across the week, support undo and persist without th
   const editor = page.getByRole('region', { name: 'Availability editor' })
   await editor.getByLabel('From', { exact: true }).selectOption('540')
   await editor.getByLabel('Until', { exact: true }).selectOption('720')
-  await editor.getByRole('button', { name: 'Add time range', exact: true }).click()
   for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday'])
     await page.getByRole('checkbox', { name: day, exact: true }).check()
-  await page.getByRole('button', { name: 'Copy to selected days' }).click()
-  await page.getByRole('button', { name: 'Clear this day', exact: true }).click()
+  await editor.getByRole('button', { name: 'Add time range', exact: true }).click()
+  await page.getByRole('button', { name: 'Remove Monday 9:00 AM–12:00 PM', exact: true }).click()
   await page.getByRole('button', { name: 'Undo last edit' }).click()
   await page.getByRole('button', { name: 'Save availability', exact: true }).click()
   await expect(page.getByText('Availability saved.', { exact: true })).toBeVisible()

@@ -280,9 +280,7 @@ test('retains a rejected planning choice and details for a corrected retry', asy
   await expect(page.getByLabel('Fixture School · Fixture Biology date and time')).not.toHaveValue(
     ''
   )
-  await expect(page.getByLabel('Location (optional)')).toHaveValue(
-    'Retained planning room'
-  )
+  await expect(page.getByLabel('Location (optional)')).toHaveValue('Retained planning room')
   await expect(page.getByLabel('Participant instructions (optional)')).toHaveValue(
     'Meet the facilitator at the office.'
   )

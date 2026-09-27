@@ -57,11 +57,17 @@ test('sets a shared window and schedules from a class calendar on desktop and mo
   await page.getByRole('button', { name: /Wednesday, January 6, 2027;/ }).click()
   await expect(selected.getByText('Extra availability', { exact: true })).toBeVisible()
   await expect(selected.getByText('Teacher added this afternoon', { exact: true })).toBeVisible()
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Workshops', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Workshops', exact: true })
+    .click()
   await page.getByLabel('Workshop', { exact: true }).selectOption('fixture-definition-1')
   await page.getByRole('button', { name: 'Add workshop to teacher' }).click()
   await expect(page).toHaveURL(/month=2027-01/)
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Availability', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Availability', exact: true })
+    .click()
   await page.getByLabel('Show delivery window').selectOption({ label: 'Workshop 1' })
   await expect(page.getByText('2027-01-04 through 2027-01-08', { exact: false })).toBeVisible()
   for (const day of [4, 11]) {
@@ -77,7 +83,10 @@ test('sets a shared window and schedules from a class calendar on desktop and mo
       })
     ).toBeVisible()
   }
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Workshops', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Workshops', exact: true })
+    .click()
   const card = page
     .locator('article')
     .filter({ has: page.getByRole('heading', { name: 'Workshop 1', exact: true }) })
@@ -95,7 +104,10 @@ test('sets a shared window and schedules from a class calendar on desktop and mo
     .locator('article')
     .filter({ has: page.getByRole('heading', { name: 'Workshop 2', exact: true }) })
   await expect(other.getByText('Choose from 2 saved candidate times')).toBeVisible()
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Availability', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Availability', exact: true })
+    .click()
   await page.getByRole('button', { name: /Monday, January 11, 2027;/ }).click()
   await selected.getByText('Edit availability', { exact: true }).click()
   const edit = selected
@@ -105,9 +117,15 @@ test('sets a shared window and schedules from a class calendar on desktop and mo
   await edit.getByRole('button', { name: 'Save availability' }).click()
   await expect(selected.getByText('Updated teacher note', { exact: true })).toBeVisible()
   await selected.getByRole('button', { name: 'Remove availability', exact: true }).click()
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Workshops', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Workshops', exact: true })
+    .click()
   await expect(other.getByText('Choose from 1 saved candidate time')).toBeVisible()
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Availability', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Availability', exact: true })
+    .click()
   await page.getByRole('button', { name: /Monday, January 4, 2027;/ }).click()
   await page.screenshot({ path: 'work/class-calendar-desktop.png', fullPage: true })
   await page.setViewportSize({ width: 390, height: 844 })
@@ -117,7 +135,10 @@ test('sets a shared window and schedules from a class calendar on desktop and mo
     (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze())
       .violations
   ).toEqual([])
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Workshops', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Workshops', exact: true })
+    .click()
   await card.getByText('Choose from 1 saved candidate time').click()
   await expect(card.getByLabel('Session end')).toHaveValue('11:00')
   await card.getByLabel('Location').fill('Room 12')

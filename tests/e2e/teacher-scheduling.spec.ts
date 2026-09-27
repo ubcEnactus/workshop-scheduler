@@ -36,7 +36,10 @@ test('school and teacher setup leads directly to availability, enrollment and bo
   await date.getByLabel('End time', { exact: true }).fill('11:00')
   await date.getByRole('button', { name: 'Add availability', exact: true }).click()
   await expect(date.getByRole('status')).toHaveText('Availability saved.')
-  await page.getByRole('navigation', { name: 'Teacher sections' }).getByRole('link', { name: 'Workshops', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: 'Teacher sections' })
+    .getByRole('link', { name: 'Workshops', exact: true })
+    .click()
   await page.getByLabel('Workshop', { exact: true }).selectOption('fixture-definition-1')
   await page.getByRole('button', { name: 'Add workshop to teacher' }).click()
   await expect(

@@ -142,9 +142,7 @@ export function PublishedWorkshops({
                         />
                         {formatInstantRange(workshop.start, workshop.end)}
                       </p>
-                      <p className="mt-2 text-sm break-words text-slate-600">
-                        {workshop.location}
-                      </p>
+                      <p className="mt-2 text-sm break-words text-slate-600">{workshop.location}</p>
                       {workshop.pas !== undefined ? (
                         <p className="mt-2 flex items-start gap-2 text-sm text-slate-600">
                           <Users
