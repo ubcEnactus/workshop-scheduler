@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { emailDeliveryMode, isEmailSignInReady } from './auth-email'
+import { emailDeliveryMode, emailSignInSucceeded, isEmailSignInReady } from './auth-email'
+
+describe('email sign-in result', () => {
+  it('accepts only the successful provider verification redirect', () => {
+    expect(
+      emailSignInSucceeded('https://app.example/api/auth/verify-request?provider=resend&type=email')
+    ).toBe(true)
+    expect(emailSignInSucceeded('/api/auth/verify-request?provider=resend&type=email')).toBe(true)
+  })
+  it.each([
+    'https://app.example/api/auth/error?error=Configuration',
+    '/login?error=AccessDenied',
+    '/api/auth/verify-request?provider=resend&type=email&error=Configuration',
+    '/api/auth/signin/resend',
+    '/api/auth/verify-request?provider=resend',
+    undefined,
+    null,
+    {},
+  ])('does not claim an email was sent after an error or unexpected result: %s', (result) => {
+    expect(emailSignInSucceeded(result)).toBe(false)
+  })
+})
 describe('email delivery configuration', () => {
   it('permits local console delivery without credentials', () => {
     expect(emailDeliveryMode({ nodeEnv: 'development' })).toBe('console')

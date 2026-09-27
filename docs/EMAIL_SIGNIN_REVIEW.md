@@ -1,0 +1,9 @@
+# Email sign-in delivery failure
+
+September 27, 2026: the user's Ennovate sign-in request logged a Resend 401 response stating that the API key is invalid. The user's account is an active administrator in both Ennovate and Enspire. Both deployments inherit the same sensitive AUTH_RESEND_KEY, scoped to Preview and Production. The metadata does not expose the sensitive key. A valid replacement must be saved in Vercel; no secret should be pasted into chat.
+
+The application incorrectly showed Check your email after this failure. Auth.js may return an error redirect rather than throw when sendVerificationRequest rejects with a generic provider error. The login action previously ignored that returned URL and redirected unconditionally to the success page. It now confirms the Resend verification-request result before showing success; failed or unexpected results display a delivery error without exposing provider details. Access-denied handling remains distinct.
+
+Earlier hosted reports that inferred Resend acceptance from the check-email screen were insufficient evidence of provider acceptance or inbox delivery. Actual delivery remains blocked until the key is replaced and the deployments are rebuilt. No live email was sent during this investigation.
+
+Validation: 254 unit tests, 261 database integration tests, and five HTTPS preview-auth browser journeys passed. The new provider regressions exercise Auth.js with mocked 401, 403, 429, and 500 responses and an accepted response. No real email is sent by these tests. The first HTTPS run had two local Chromium stylesheet failures (ERR_TOO_MANY_RETRIES); both affected journeys passed on a fresh rerun. Lint, TypeScript, and formatting passed. The production build passed. The code fix is ready; release awaits the replacement key so both sites can be rebuilt with working email configuration.

@@ -6,7 +6,7 @@ import { AuthError } from 'next-auth'
 
 import { SubmitButton } from '@/components/submit-button'
 import { getCurrentUser, signIn } from '@/lib/auth'
-import { isEmailSignInReady } from '@/lib/auth-email'
+import { emailSignInSucceeded, isEmailSignInReady } from '@/lib/auth-email'
 import { prisma } from '@/lib/db'
 import { getPreviewDemoConfig } from '@/lib/preview-demo-auth'
 import { loginSchema } from '@/lib/schemas/auth'
@@ -55,16 +55,21 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     ) {
       redirect('/login?error=EmailUnavailable')
     }
+    let result: unknown
     try {
-      await signIn('resend', {
+      result = await signIn('resend', {
         email: parsed.data.email,
         redirectTo: callbackUrl ?? '/',
         redirect: false,
       })
     } catch (error) {
-      if (error instanceof AuthError) redirect('/login?error=AccessDenied')
+      if (error instanceof AuthError)
+        redirect(
+          `/login?error=${error.type === 'AccessDenied' ? 'AccessDenied' : 'EmailDeliveryFailed'}`
+        )
       throw error
     }
+    if (!emailSignInSucceeded(result)) redirect('/login?error=EmailDeliveryFailed')
     redirect('/login/check-email')
   }
 
@@ -143,7 +148,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
                 ? 'Demo sign-in is unavailable. Please contact your admin.'
                 : error === 'EmailUnavailable'
                   ? 'Email sign-in is not available yet. Please contact your admin.'
-                  : 'Sign-in failed. Check the email address and try again.'}
+                  : error === 'EmailDeliveryFailed'
+                    ? 'We could not send your sign-in email. Please try again later or contact your admin.'
+                    : 'Sign-in failed. Check the email address and try again.'}
             </div>
           ) : null}
 
