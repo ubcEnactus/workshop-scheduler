@@ -114,11 +114,12 @@ model AvailabilityScheduleVersion {
 // --- Scheduling domain ---
 // Hard delete. Lifecycle is tracked via status enums, not `deletedAt`.
 
-// A teacher's class (one of the "1-3 classes" per school). Owns the meeting
-// times and ties teacher + school together.
+// One implicit scheduling profile per teacher. The legacy table/model name is
+// retained to preserve availability, enrollment, session IDs and historical links.
+// Administrators manage this through the teacher; there is no separate class setup.
 model ClassSection {
   id                     String  @id @default(cuid())
-  name                   String // "Period 3 Biology"
+  name                   String // Mirrored teacher display name; not separately editable.
   subject                String?
   grade                  String?
   monthlyCadence         Int     @default(1)
@@ -126,7 +127,7 @@ model ClassSection {
   defaultMinPAs          Int     @default(1)
   defaultMaxPAs          Int     @default(3)
 
-  teacherId String
+  teacherId String @unique
   teacher   User   @relation("TeacherClasses", fields: [teacherId], references: [id])
   schoolId  String
   school    School @relation(fields: [schoolId], references: [id])
@@ -135,7 +136,6 @@ model ClassSection {
   classWorkshops         ClassWorkshop[]
   availabilitySlots      AvailabilitySlot[]
   availabilityExceptions ClassAvailabilityException[]
-  teacherTransfers       ClassTeacherTransfer[]
   archivedAt             DateTime?
 
   createdAt DateTime @default(now())
@@ -145,8 +145,8 @@ model ClassSection {
   @@index([schoolId])
 }
 
-// Optional weekly reference information. Candidate workshop dates belong to
-// ClassWorkshop.availabilitySlots; these recurring times do not authorize sessions.
+// Effective Vancouver weekly availability. Only activeForScheduling rows authorize
+// new dates; inactive legacy rows remain reference information.
 model ClassMeeting {
   id             String       @id @default(cuid())
   classSectionId String
@@ -172,12 +172,13 @@ enum WorkshopStatus {
   CANCELLED
 }
 
-// Reusable curriculum. A null number marks an imported, unidentified definition.
+// Imported runs may need identification; number is a legacy reference, not identity.
 enum WorkshopIdentityStatus {
   IDENTIFIED
   NEEDS_IDENTIFICATION
 }
 
+// One named delivery run with a shared inclusive date window.
 model WorkshopDefinition {
   id               String                 @id @default(cuid())
   number           Int?
@@ -348,6 +349,15 @@ model AutoFillExclusion {
   @@index([paId])
 }
 
+// Durable acknowledgement of an atomic publication request, including lost responses.
+model PublicationReceipt {
+  requestKey  String   @id
+  actorId     String
+  payloadHash String
+  sessionIds  Json
+  createdAt   DateTime @default(now())
+}
+
 model WorkshopChange {
   id                String          @id @default(cuid())
   workshopSessionId String          @map("workshopId")
@@ -490,23 +500,6 @@ model EnrollmentBatch {
   actorId     String
   payloadHash String
   createdAt   DateTime @default(now())
-}
-
-model ClassTeacherTransfer {
-  id                 String       @id @default(cuid())
-  classSectionId     String
-  classSection       ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
-  fromTeacherId      String
-  toTeacherId        String
-  effectiveOn        DateTime     @db.Date
-  actorId            String
-  reason             String?
-  cancelledAt        DateTime?
-  cancelledById      String?
-  cancellationReason String?
-  createdAt          DateTime     @default(now())
-
-  @@index([classSectionId, effectiveOn])
 }
 
 // --- NextAuth adapter tables ---
