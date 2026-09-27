@@ -66,9 +66,8 @@ model User {
 }
 
 model School {
-  id       String @id @default(cuid())
-  name     String
-  district String
+  id   String @id @default(cuid())
+  name String
 
   teachers      User[]
   classSections ClassSection[]
