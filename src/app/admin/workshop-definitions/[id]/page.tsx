@@ -25,6 +25,8 @@ import { ClassPicker } from '../../class-workshops/class-picker'
 import { EnrollmentForm } from '../../class-workshops/enrollment-form'
 import { updateClassWorkshopLifecycle } from '../../class-workshops/actions'
 import { workshopRecordReference } from '../workshop-reference'
+import { showWorkshopOverview } from '@/lib/scheduling/workshop-overview'
+import { WorkshopRunOverview } from '@/components/workshop-run-overview'
 
 export default async function WorkshopRunDetail({
   params,
@@ -79,6 +81,13 @@ export default async function WorkshopRunDetail({
     }),
   ])
   if (!run) notFound()
+  if (
+    showWorkshopOverview(
+      query,
+      run.classWorkshops.flatMap((item) => item.sessions)
+    )
+  )
+    return <WorkshopRunOverview run={run} snapshot={snapshot} query={query} />
   const today = vancouverDateKey(new Date())
   const workflowWeek =
     query.week && isCalendarDate(query.week)
@@ -272,6 +281,7 @@ export default async function WorkshopRunDetail({
         />
       )}
       <WorkshopWorkspaceShell
+        overviewHref={`/admin/workshop-definitions/${id}?view=overview`}
         step={step}
         hrefs={{ plan: href('plan'), staff: href('staff'), publish: href('publish') }}
         summary={[

@@ -29,6 +29,7 @@ export const definitionSchema = z
     deliveryStart: optionalDate,
     deliveryEnd: optionalDate,
     expectedUpdatedAt: z.iso.datetime().optional(),
+    returnToOverview: z.enum(['1']).optional(),
     confirmWindowImpact: z.enum(['1']).optional(),
     windowExceptionReason: z.string().trim().max(1000).default(''),
   })

@@ -4,7 +4,40 @@ import {
   workshopDateProgress,
   workshopNextStepKind,
   type WorkshopOverviewCounts,
+  showWorkshopOverview,
+  workshopCalendarMonth,
 } from './workshop-overview'
+
+it('uses the calendar after publication while preserving explicit draft workflow links', () => {
+  const sessions = [{ status: 'PUBLISHED', publishedAt: new Date() }]
+  expect(showWorkshopOverview({}, sessions)).toBe(true)
+  expect(showWorkshopOverview({}, [{ status: 'DRAFT', publishedAt: null }])).toBe(false)
+  expect(showWorkshopOverview({}, [{ status: 'CANCELLED', publishedAt: new Date() }])).toBe(true)
+  expect(showWorkshopOverview({}, [{ status: 'CANCELLED', publishedAt: null }])).toBe(false)
+  for (const query of [
+    { step: 'plan' },
+    { step: 'staff' },
+    { step: 'publish' },
+    { batch: 'batch' },
+    { sessionId: 'session' },
+    { addClasses: '1' },
+    { saved: '0' },
+  ])
+    expect(showWorkshopOverview(query, sessions)).toBe(false)
+  expect(showWorkshopOverview({ view: 'overview' }, [])).toBe(true)
+})
+
+it('opens an actual session month in Vancouver, including history and invalid month fallbacks', () => {
+  const sessions = [
+    { status: 'PUBLISHED', scheduledStart: new Date('2027-02-01T06:00:00Z') },
+    { status: 'CANCELLED', scheduledStart: new Date('2026-10-01T18:00:00Z') },
+  ]
+  expect(workshopCalendarMonth(undefined, sessions, '2026-09-27', null)).toBe('2027-01')
+  expect(workshopCalendarMonth(undefined, sessions, '2027-04-01', null)).toBe('2027-01')
+  expect(workshopCalendarMonth('2027-13', sessions, '2026-09-27', null)).toBe('2027-01')
+  expect(workshopCalendarMonth('2027-05', sessions, '2026-09-27', null)).toBe('2027-05')
+  expect(workshopCalendarMonth(undefined, [], '2026-09-27', new Date('2027-03-01'))).toBe('2027-03')
+})
 
 const empty: WorkshopOverviewCounts = {
   included: 0,

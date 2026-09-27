@@ -133,10 +133,13 @@ export async function createWorkshopDefinition(
 export async function saveWorkshopDefinition(form: FormData) {
   const actor = await requireRole('ADMIN')
   const parsed = definitionSchema.safeParse(Object.fromEntries(form))
-  const target = '/admin/workshop-definitions'
+  const target =
+    parsed.success && parsed.data.id && parsed.data.returnToOverview
+      ? `/admin/workshop-definitions/${encodeURIComponent(parsed.data.id)}?view=overview`
+      : '/admin/workshop-definitions'
   if (!parsed.success)
     redirect(target + '?error=' + encodeURIComponent(parsed.error.issues[0].message))
-  let destination = target + '?saved=1'
+  let destination = target + (target.includes('?') ? '&detailsSaved=1' : '?saved=1')
   try {
     const result = await scheduleTransaction(async (tx) => {
       const { id, expectedUpdatedAt, ...fields } = parsed.data

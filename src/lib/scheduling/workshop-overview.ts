@@ -1,3 +1,44 @@
+import { isCalendarDate, vancouverDateKey } from '@/lib/time'
+
+export function showWorkshopOverview(
+  query: Record<string, string | undefined>,
+  sessions: { status: string; publishedAt: Date | null }[]
+) {
+  if (query.view === 'overview') return true
+  if (
+    ['plan', 'staff', 'publish'].includes(query.step ?? '') ||
+    [
+      'batch',
+      'sessionId',
+      'classSectionId',
+      'addClasses',
+      'saved',
+      'created',
+      'filter',
+      'week',
+    ].some((key) => query[key] !== undefined)
+  )
+    return false
+  return sessions.some(
+    (session) => session.publishedAt !== null || ['PUBLISHED', 'COMPLETED'].includes(session.status)
+  )
+}
+
+export function workshopCalendarMonth(
+  requested: string | undefined,
+  sessions: { scheduledStart: Date; status: string }[],
+  today: string,
+  windowStart: Date | null
+) {
+  if (requested && isCalendarDate(requested + '-01')) return requested
+  const dates = sessions
+    .filter((session) => session.status !== 'CANCELLED')
+    .map((session) => vancouverDateKey(session.scheduledStart))
+    .sort()
+  const next = dates.find((date) => date >= today)
+  return (next ?? dates.at(-1) ?? windowStart?.toISOString().slice(0, 10) ?? today).slice(0, 7)
+}
+
 export type WorkshopOverviewCounts = {
   included: number
   publishedDeficits: number

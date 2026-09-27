@@ -240,6 +240,14 @@ export function WorkshopDraftWorkspace({
           {message.error}
         </p>
       )}
+      {step === 'publish' && !blocked && rows.some((row) => row.status === 'PUBLISHED') && (
+        <Link
+          href={`/admin/workshop-definitions/${workshopDefinitionId}?view=overview`}
+          className={buttonClasses()}
+        >
+          Open workshop overview →
+        </Link>
+      )}
       {uncertain && !pending && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
           <p>Check your last save to continue. Your selections are kept.</p>

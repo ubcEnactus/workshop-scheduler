@@ -7,6 +7,18 @@ import {
 } from './navigation'
 
 describe('schedule navigation context', () => {
+  it('preserves workshop calendar origin through reviewed session changes', () => {
+    const context = parseSchedulingContext({
+      from: 'workshop',
+      month: '2027-01',
+      workshopDefinitionId: 'run',
+    })
+    const form = new FormData()
+    for (const [key, value] of Object.entries(context)) form.set(key, value)
+    expect(readSchedulingContext(form)).toEqual(context)
+    expect(schedulingHref('/admin/workshops/session', context)).toContain('from=workshop')
+    expect(parseSchedulingContext({ from: 'https://external.invalid' })).not.toHaveProperty('from')
+  })
   it('keeps directory return filters separate from edited school and class fields', () => {
     const form = new FormData()
     for (const [key, value] of Object.entries({

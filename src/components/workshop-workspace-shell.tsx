@@ -10,11 +10,13 @@ export function WorkshopWorkspaceShell({
   hrefs,
   summary,
   children,
+  overviewHref,
 }: {
   step: WorkshopStep
   hrefs: Record<WorkshopStep, string>
   summary: { label: string; href: string }[]
   children: ReactNode
+  overviewHref?: string
 }) {
   const [busy, setBusy] = useState(false)
   const descriptions = {
@@ -24,6 +26,20 @@ export function WorkshopWorkspaceShell({
   }
   return (
     <WorkspaceBusy.Provider value={setBusy}>
+      {overviewHref && (
+        <div className="flex justify-end">
+          <Link
+            href={overviewHref}
+            aria-disabled={busy || undefined}
+            onClick={(event) => {
+              if (busy) event.preventDefault()
+            }}
+            className="text-sm font-semibold underline"
+          >
+            View workshop calendar
+          </Link>
+        </div>
+      )}
       <nav
         aria-label="Workshop workflow"
         className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-white p-1.5"

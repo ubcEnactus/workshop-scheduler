@@ -26,6 +26,8 @@ Admins can delete an unused or draft-only workshop after a confirmation showing 
 
 The workshop workspace has **Plan → Staff → Publish** views of the same saved sessions. Dates save explicitly; staffing edits save immediately to the private draft with Undo. **Auto-fill missing PAs** preserves all existing teams and dates, adding only enough automatically eligible PAs to reach the selected sessions' minimums. It never replaces teams or fills optional places to the maximum. A separate expiring staffing proposal is no longer part of the flow. Publication is the deliberate boundary that makes assignments official and participant-visible; there is no PA acceptance step.
 
+After initial publication, opening a workshop defaults to its own calendar overview. It shows only that workshop’s sessions, with status, school, teacher, PA team, and links to reviewed edits. Published staffing issues stay visible across calendar months. Drafts and remaining teacher dates remain accessible through Continue scheduling and the existing Plan → Staff → Publish workflow. Workshop details can be edited from the overview. Calendar navigation does not change scheduling records.
+
 If plans change, the admin can edit the date and PA set together, change details, cancel, or mark completion. Ready class sessions can be published individually or in a reviewed batch. Initial publication requires valid staffing; if a PA later withdraws, the admin may remove them while retaining the published session with a prominent staffing deficit. PA availability changes flag affected assignments; they never automatically cancel or remove them. Participant communication is external for the pilot, with an admin task recording what still needs to be communicated.
 
 ## Who can do what

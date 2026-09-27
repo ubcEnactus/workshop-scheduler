@@ -119,7 +119,11 @@ export default async function WorkshopDetail({
         }
       >
         <Link
-          href={schedulingHref('/admin/workshops', context)}
+          href={
+            query.from === 'workshop'
+              ? `/admin/workshop-definitions/${workshop.classWorkshop.workshopDefinitionId}?view=overview&month=${context.month}`
+              : schedulingHref('/admin/workshops', context)
+          }
           className="text-sm font-medium text-slate-500 hover:text-slate-900"
         >
           ← Back to {workshop.classWorkshop.workshopDefinition.title} schedule

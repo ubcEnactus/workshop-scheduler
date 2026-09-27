@@ -65,6 +65,7 @@ export function WorkshopForm({
         <input type="hidden" name="returnClassSectionId" value={context?.classSectionId ?? ''} />
         <input type="hidden" name="view" value={context?.view ?? 'all'} />
         <input type="hidden" name="batch" value={context?.batch ?? ''} />
+        <input type="hidden" name="from" value={context?.from ?? ''} />
         {state.error && (
           <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
             {state.error} Your entries have been kept.

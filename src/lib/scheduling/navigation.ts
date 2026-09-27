@@ -20,6 +20,7 @@ export const schedulingContextSchema = z.object({
   batch: optionalId,
   week: optionalDate,
   view: scheduleViewSchema.optional(),
+  from: z.enum(['workshop']).optional(),
 })
 export type SchedulingContext = z.infer<typeof schedulingContextSchema>
 
@@ -35,6 +36,7 @@ export function parseSchedulingContext(
   const batch = optionalId.safeParse(query.batch || undefined)
   const week = optionalDate.safeParse(query.week || undefined)
   return {
+    ...(query.from === 'workshop' ? { from: 'workshop' as const } : {}),
     month: month.success
       ? month.data
       : week.success && week.data
@@ -91,18 +93,25 @@ export function schedulingHref(
 export function readSchedulingContext(form: FormData, fallbackMonth?: string) {
   return parseSchedulingContext(
     Object.fromEntries(
-      ['month', 'schoolId', 'classSectionId', 'view', 'workshopDefinitionId', 'batch', 'week'].map(
-        (key) => [
-          key,
-          form.get(
-            key === 'schoolId' && form.has('returnSchoolId')
-              ? 'returnSchoolId'
-              : key === 'classSectionId' && form.has('returnClassSectionId')
-                ? 'returnClassSectionId'
-                : key
-          ),
-        ]
-      )
+      [
+        'month',
+        'schoolId',
+        'classSectionId',
+        'view',
+        'workshopDefinitionId',
+        'batch',
+        'week',
+        'from',
+      ].map((key) => [
+        key,
+        form.get(
+          key === 'schoolId' && form.has('returnSchoolId')
+            ? 'returnSchoolId'
+            : key === 'classSectionId' && form.has('returnClassSectionId')
+              ? 'returnClassSectionId'
+              : key
+        ),
+      ])
     ),
     fallbackMonth
   )
