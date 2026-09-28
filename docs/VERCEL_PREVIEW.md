@@ -2,12 +2,18 @@
 
 The dedicated `workshop-scheduler-test` project has two separate admin demos, Ennovate and Enspire, created with blank datasets. Older previews retain their original disposable sample database. This is a test environment, separate from a production release. The two named demo URLs are public; project-level Vercel Authentication remains enabled for other preview URLs.
 
-## Current public demos and sign-in — 27 September 2026
+## Current public demos and sign-in — 28 September 2026
 
 | Demo     | Stable public sign-in                                            | Deployment                         | Database                         |
 | -------- | ---------------------------------------------------------------- | ---------------------------------- | -------------------------------- |
-| Ennovate | [Open Ennovate](https://ennovate-workshop-demo.vercel.app/login) | `dpl_5qqVmsxuLmQLmqs3MKNU17N99tqp` | `workshop_admin_demo_20260924`   |
-| Enspire  | [Open Enspire](https://enspire-workshop-demo.vercel.app/login)   | `dpl_28oxCEfN7y2KQnfEHEUXKaMWw4kg` | `workshop_enspire_demo_20260924` |
+| Ennovate | [Open Ennovate](https://ennovate-workshop-demo.vercel.app/login) | `dpl_cSE7Ztd5XyZbyrKvkfGBdk6zy8JT` | `workshop_admin_demo_20260924`   |
+| Enspire  | [Open Enspire](https://enspire-workshop-demo.vercel.app/login)   | `dpl_GSuhZq7W7RDYTk8WHEu1kSfFWVga` | `workshop_enspire_demo_20260924` |
+
+### Admin directory and email recovery release
+
+Both demos now include **Admins**, where an existing administrator can add another active administrator account. The release also validates Resend sender syntax, trims configured credentials before use, and directly tests accepted and rejected provider responses. No database migration was required.
+
+Both Vercel builds reached Ready before the stable aliases were promoted. Hosted verification passed public login, enabled email sign-in, demo-admin authentication, the new Admins page, and sign-out on both aliases without application errors or scheduling writes. One authorized Ennovate sign-in request to the existing personal administrator was accepted by Resend and reached the check-email screen after the environment variables were updated; inbox receipt remains for the recipient to confirm. Release evidence is under ignored `work/admin-email-release-20260928/`, with the immutable deployment snapshot under `work/vercel-admin-email-20260928/`.
 
 ### Calendar occurrence removal release
 

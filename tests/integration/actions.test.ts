@@ -20,6 +20,7 @@ import { getCurrentUser, requireRole } from '../../src/lib/auth'
 import * as schools from '../../src/app/admin/schools/actions'
 import * as teachers from '../../src/app/admin/teachers/actions'
 import * as pas from '../../src/app/admin/pas/actions'
+import * as admins from '../../src/app/admin/admins/actions'
 import * as classes from '../../src/app/admin/classes/actions'
 import * as workshops from '../../src/app/admin/workshops/actions'
 import { saveAvailability } from '../../src/app/pa/availability/actions'
@@ -45,7 +46,7 @@ async function createDraft(overrides: Record<string, string | number> = {}) {
 }
 
 describe('authorization at the Server Action boundary', () => {
-  const adminActions = { ...schools, ...teachers, ...pas, ...classes, ...workshops }
+  const adminActions = { ...schools, ...teachers, ...pas, ...admins, ...classes, ...workshops }
   it.each(Object.entries(adminActions))(
     '%s rejects a PA and teacher before parsing or writing',
     async (_name, action) => {
@@ -77,6 +78,21 @@ describe('authorization at the Server Action boundary', () => {
 })
 
 describe('foundation integrity', () => {
+  it('lets an admin add another normalized admin account and rejects duplicate email', async () => {
+    await expect(
+      admins.createAdmin(form({ name: 'Second Admin', email: ' SECOND.ADMIN@Example.com ' }))
+    ).rejects.toThrow('REDIRECT:/admin/admins?saved=1')
+    const added = await prisma.user.findUniqueOrThrow({
+      where: { email: 'second.admin@example.com' },
+    })
+    expect(added).toMatchObject({ name: 'Second Admin', role: 'ADMIN', schoolId: null })
+
+    await expect(
+      admins.createAdmin(form({ name: 'Duplicate', email: fixtures.pa.email }))
+    ).rejects.toThrow('That%20email%20is%20already%20in%20use')
+    expect(await prisma.user.count({ where: { email: fixtures.pa.email } })).toBe(1)
+  })
+
   it('preserves workshop context through school, teacher, and class prerequisite setup', async () => {
     const setupContext = {
       returnToClasses: '1',

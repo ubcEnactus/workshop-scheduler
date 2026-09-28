@@ -30,6 +30,11 @@ const SECTIONS = [
     blurb: 'Manage partner schools, teachers, and availability.',
   },
   { href: '/admin/pas', name: 'PAs', blurb: 'Manage PA accounts, availability, and workload.' },
+  {
+    href: '/admin/admins',
+    name: 'Admins',
+    blurb: 'Add trusted coordinators with full administrative access.',
+  },
 ] as const
 
 export default async function AdminHome({

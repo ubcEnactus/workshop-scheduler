@@ -6,7 +6,7 @@ import type { Role } from '@prisma/client'
 import { cache } from 'react'
 
 import { prisma } from '@/lib/db'
-import { emailDeliveryMode } from '@/lib/auth-email'
+import { emailDeliveryMode, sendResendVerificationRequest } from '@/lib/auth-email'
 import { previewAuthSessionCookie } from '@/lib/auth-cookie'
 import { PREVIEW_DEMO_SESSION_MAX_AGE_SECONDS } from '@/lib/preview-demo-auth'
 
@@ -72,24 +72,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return
         }
 
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${provider.apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from: provider.from,
-            to: identifier,
-            subject: 'Sign in to Workshop Scheduler',
-            text: `Sign in by opening this link:\n\n${url}\n\nIf you didn't request this, you can ignore this email.`,
-          }),
+        await sendResendVerificationRequest({
+          identifier,
+          url,
+          apiKey: provider.apiKey ?? '',
+          from: provider.from ?? '',
         })
-
-        if (!res.ok) {
-          const body = await res.text()
-          throw new Error(`Resend error: ${res.status} ${body}`)
-        }
       },
     }),
   ],

@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Clock3,
   LoaderCircle,
+  ShieldCheck,
 } from 'lucide-react'
 
 type Role = 'ADMIN' | 'PA' | 'TEACHER'
@@ -46,6 +47,7 @@ const navigation = {
       group: 'Manage',
     },
     { href: '/admin/pas', label: 'PAs', icon: UserRound, group: 'Manage' },
+    { href: '/admin/admins', label: 'Admins', icon: ShieldCheck, group: 'Manage' },
   ],
   PA: [
     { href: '/pa', label: 'My workshops', icon: CalendarDays, group: 'My workspace' },
@@ -136,13 +138,15 @@ export function RoleShell({
             pathname.startsWith('/admin/schools') ||
             pathname.startsWith('/admin/teachers')
           ? '/admin/teachers'
-          : pathname.startsWith('/admin/pas') ||
-              pathname.startsWith('/admin/staffing') ||
-              pathname.startsWith('/admin/workshops/match')
-            ? '/admin/pas'
-            : pathname.startsWith('/admin/workshops')
-              ? '/admin/workshops'
-              : '/admin'
+          : pathname.startsWith('/admin/admins')
+            ? '/admin/admins'
+            : pathname.startsWith('/admin/pas') ||
+                pathname.startsWith('/admin/staffing') ||
+                pathname.startsWith('/admin/workshops/match')
+              ? '/admin/pas'
+              : pathname.startsWith('/admin/workshops')
+                ? '/admin/workshops'
+                : '/admin'
   const active =
     (adminActiveHref ? items.find((item) => item.href === adminActiveHref) : undefined) ??
     items

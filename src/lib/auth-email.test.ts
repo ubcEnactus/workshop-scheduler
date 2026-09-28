@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { emailDeliveryMode, emailSignInSucceeded, isEmailSignInReady } from './auth-email'
+import {
+  emailDeliveryMode,
+  emailSignInSucceeded,
+  isEmailSignInReady,
+  sendResendVerificationRequest,
+} from './auth-email'
 
 describe('email sign-in result', () => {
   it('accepts only the successful provider verification redirect', () => {
@@ -31,7 +36,14 @@ describe('email delivery configuration', () => {
     ).toThrow('AUTH_RESEND_KEY')
   })
   it('fails closed for missing or placeholder production senders', () => {
-    for (const from of [undefined, '', '  ', 'Club <no-reply@example.com>']) {
+    for (const from of [
+      undefined,
+      '',
+      '  ',
+      'not-an-address',
+      'Club <broken-address>',
+      'Club <no-reply@example.com>',
+    ]) {
       expect(() =>
         emailDeliveryMode({ nodeEnv: 'production', apiKey: 'configured', from })
       ).toThrow('AUTH_RESEND_FROM')
@@ -64,5 +76,46 @@ describe('email delivery configuration', () => {
       })
     ).toBe(true)
     expect(isEmailSignInReady({ nodeEnv: 'development' })).toBe(true)
+  })
+})
+
+describe('Resend verification requests', () => {
+  it('trims configured credentials and submits the expected sign-in message', async () => {
+    const fetcher = async (input: string | URL | Request, init?: RequestInit) => {
+      expect(input).toBe('https://api.resend.com/emails')
+      expect(init?.headers).toEqual({
+        Authorization: 'Bearer re_test',
+        'Content-Type': 'application/json',
+      })
+      expect(JSON.parse(String(init?.body))).toEqual({
+        from: 'Workshop <signin@school.test>',
+        to: 'admin@example.test',
+        subject: 'Sign in to Workshop Scheduler',
+        text: "Sign in by opening this link:\n\nhttps://app.test/link\n\nIf you didn't request this, you can ignore this email.",
+      })
+      return Response.json({ id: 'accepted' })
+    }
+
+    await expect(
+      sendResendVerificationRequest({
+        identifier: 'admin@example.test',
+        url: 'https://app.test/link',
+        apiKey: ' re_test ',
+        from: ' Workshop <signin@school.test> ',
+        fetcher,
+      })
+    ).resolves.toBeUndefined()
+  })
+
+  it('surfaces the provider status when Resend rejects delivery', async () => {
+    await expect(
+      sendResendVerificationRequest({
+        identifier: 'admin@example.test',
+        url: 'https://app.test/link',
+        apiKey: 're_invalid',
+        from: 'Workshop <signin@school.test>',
+        fetcher: async () => Response.json({ message: 'Invalid API key' }, { status: 401 }),
+      })
+    ).rejects.toThrow('Resend error: 401')
   })
 })

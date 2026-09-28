@@ -30,6 +30,8 @@ Ennovate and Enspire have separate workspaces. They began without sample schools
 
 Demo buttons and publishing send no email. Adding a person saves their invited email address; it does not send an invitation or add an easy-access demo button. Once email delivery is activated, that person can request their own sign-in link.
 
+Admins can add another coordinator from **Admins → Add admin**. The new admin receives full scheduling and account-management access, so add only trusted coordinators. Adding the account does not send an invitation; share the normal sign-in page so they can request a one-time link.
+
 ## 2. Set up people and availability
 
 ### Schools and teachers

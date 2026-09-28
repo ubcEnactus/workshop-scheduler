@@ -30,6 +30,7 @@ test('invited users in all three roles sign in through real one-time magic links
         '/admin/schools',
         '/admin/teachers',
         '/admin/pas',
+        '/admin/admins',
         '/admin/classes',
         '/admin/workshops',
         '/admin/workshops/plan',
@@ -164,6 +165,17 @@ test('admin foundation forms persist schools, teachers, PAs and teacher availabi
   await page.locator('input[name="name"]').fill('Browser PA Updated')
   await page.getByRole('button', { name: /Save/ }).click()
   await expect(page.getByText('Browser PA Updated', { exact: true })).toBeVisible()
+  await page.goto('/admin/admins')
+  await page.locator('input[name="name"]').fill('Browser Admin')
+  await page.locator('input[name="email"]').fill('BROWSER-ADMIN@fixture.local')
+  await page.getByRole('button', { name: 'Add admin', exact: true }).click()
+  await expect(page.getByRole('status')).toContainText('Admin added')
+  await expect(page.getByText('Browser Admin', { exact: true })).toBeVisible()
+  expect(
+    await prisma.user.count({
+      where: { email: 'browser-admin@fixture.local', role: 'ADMIN', deletedAt: null },
+    })
+  ).toBe(1)
   const cls = await prisma.classSection.findUniqueOrThrow({ where: { teacherId: teacher.id } })
   expect(cls.name).toBe('Browser Teacher Updated')
   expect(await prisma.classSection.count({ where: { teacherId: teacher.id } })).toBe(1)
